@@ -1,0 +1,8 @@
+﻿{% extends "base.html" %}
+{% block title %}Admin dashboard Â· CityRide{% endblock %}
+{% block content %}
+<div class="page-heading"><span class="eyebrow">CONTROL CENTRE</span><h1>Admin dashboard</h1><p>Manage demonstration stops, routes, buses, and complaint status.</p></div>
+<div class="stats-grid"><div class="stat-card"><span>Users</span><b>{{ user_count }}</b></div><div class="stat-card"><span>Buses</span><b>{{ bus_count }}</b></div><div class="stat-card"><span>Bookings</span><b>{{ booking_count }}</b></div><div class="stat-card"><span>Complaints</span><b>{{ complaint_count }}</b></div></div>
+<div class="admin-links"><a class="button" href="{{ url_for('admin_stops') }}">Manage stops</a><a class="button" href="{{ url_for('admin_routes') }}">Manage routes</a><a class="button" href="{{ url_for('admin_buses') }}">Manage buses</a><a class="button button-outline" href="{{ url_for('admin_complaints') }}">Manage complaints</a></div>
+<div class="two-column section"><section class="panel"><h2>Latest bookings</h2>{% for item in recent_bookings %}<p><b>{{ item.reference }}</b> Â· {{ item.user.full_name }} Â· {{ item.source.name }} â†’ {{ item.destination.name }} Â· {{ item.created_at|ist }}</p>{% else %}<p class="muted">No bookings recorded.</p>{% endfor %}</section><section class="panel"><h2>Latest complaints</h2>{% for item in recent_complaints %}<p><b>{{ item.reference }}</b> Â· {{ item.name }} Â· <span class="tag">{{ item.status }}</span></p>{% else %}<p class="muted">No complaints recorded.</p>{% endfor %}</section></div>
+{% endblock %}

@@ -1,0 +1,1433 @@
+﻿{% extends "base.html" %}
+
+{% block title %}Ticket Booking Â· CityRide{% endblock %}
+
+{% block content %}
+
+<div class="page-heading">
+
+    <span class="eyebrow">
+        TICKET BOOKING
+    </span>
+
+    <h1>
+        Book Your Bus Ticket
+    </h1>
+
+    <p>
+        Select your bus and journey details.
+        The available stops and fare are calculated automatically.
+    </p>
+
+</div>
+
+
+<form
+    class="panel"
+    method="post"
+    action="{{ url_for('book') }}"
+    id="booking-form"
+>
+
+    <input
+        type="hidden"
+        name="csrf_token"
+        value="{{ csrf_token() }}"
+    >
+
+
+    <!-- =====================================================
+         JOURNEY DETAILS
+         ===================================================== -->
+
+    <h2>
+        Journey Details
+    </h2>
+
+
+    <!-- BUS NUMBER -->
+
+    <label for="bus-id">
+        Bus Number
+
+        <select
+            name="bus_id"
+            id="bus-id"
+            required
+        >
+
+            <option value="">
+                Select Bus Number
+            </option>
+
+            {% for bus in buses %}
+
+                <option value="{{ bus.id }}">
+                    {{ bus.bus_number }}
+                    {% if bus.name %}
+                        Â· {{ bus.name }}
+                    {% endif %}
+                    {% if bus.route %}
+                        Â· {{ bus.route.name }}
+                    {% endif %}
+                </option>
+
+            {% endfor %}
+
+        </select>
+
+    </label>
+
+
+    <!-- SOURCE -->
+
+    <label for="source-stop">
+        Source
+
+        <select
+            name="source_stop_id"
+            id="source-stop"
+            required
+            disabled
+        >
+
+            <option value="">
+                First select Bus Number
+            </option>
+
+        </select>
+
+    </label>
+
+
+    <!-- DESTINATION -->
+
+    <label for="destination-stop">
+        Destination
+
+        <select
+            name="destination_stop_id"
+            id="destination-stop"
+            required
+            disabled
+        >
+
+            <option value="">
+                First select Source
+            </option>
+
+        </select>
+
+    </label>
+
+
+    <!-- =====================================================
+         SELECTED BUS DETAILS
+         ===================================================== -->
+
+    <div class="panel">
+
+        <h2>
+            Selected Bus
+        </h2>
+
+        <div class="summary-row">
+
+            <span>
+                Bus
+            </span>
+
+            <b id="selected-bus">
+                Not selected
+            </b>
+
+        </div>
+
+        <div class="summary-row">
+
+            <span>
+                Route
+            </span>
+
+            <b id="selected-route">
+                Not selected
+            </b>
+
+        </div>
+
+        <div class="summary-row">
+
+            <span>
+                Base Fare Per Segment
+            </span>
+
+            <b id="base-fare">
+                â‚¹0.00
+            </b>
+
+        </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         PASSENGER DETAILS
+         ===================================================== -->
+
+    <h2>
+        Passenger Details
+    </h2>
+
+
+    <!-- NUMBER OF TICKETS -->
+
+    <label for="passenger-count">
+
+        Number of Tickets
+
+        <input
+            type="number"
+            name="passenger_count"
+            id="passenger-count"
+            value="1"
+            min="1"
+            max="8"
+            required
+        >
+
+    </label>
+
+
+    <!-- FULL / HALF -->
+
+    <label for="fare-type">
+
+        Ticket Type
+
+        <select
+            name="fare_type"
+            id="fare-type"
+            required
+        >
+
+            <option value="Full">
+                Full Ticket
+            </option>
+
+            <option value="Half">
+                Half Ticket
+            </option>
+
+        </select>
+
+    </label>
+
+
+    <p class="muted">
+        Half Ticket = 50% of Full Ticket fare.
+    </p>
+
+
+    <!-- GENDER -->
+
+    <label for="gender">
+
+        Gender
+
+        <select
+            name="gender"
+            id="gender"
+            required
+        >
+
+            <option value="">
+                Select Gender
+            </option>
+
+            <option value="Male">
+                Male
+            </option>
+
+            <option value="Female">
+                Female
+            </option>
+
+        </select>
+
+    </label>
+
+
+    <!-- =====================================================
+         AUTOMATIC DATE AND TIME
+         ===================================================== -->
+
+    <h2>
+        Date and Time
+    </h2>
+
+
+    <label for="travel-at">
+
+        Travel Date and Time
+
+        <input
+            type="datetime-local"
+            id="travel-at"
+            name="travel_at"
+            value="{{ current_time.strftime('%Y-%m-%dT%H:%M') }}"
+            readonly
+        >
+
+    </label>
+
+
+    <p class="muted">
+        The current date and time are added automatically.
+    </p>
+
+
+    <!-- =====================================================
+         FARE SUMMARY
+         ===================================================== -->
+
+    <div class="fare-preview">
+
+        <span>
+            Source
+        </span>
+
+        <b id="fare-source">
+            â€”
+        </b>
+
+
+        <span>
+            Destination
+        </span>
+
+        <b id="fare-destination">
+            â€”
+        </b>
+
+
+        <span>
+            Number of Stop Segments
+        </span>
+
+        <b id="segment-count">
+            0
+        </b>
+
+
+        <span>
+            Number of Tickets
+        </span>
+
+        <b id="fare-count">
+            1
+        </b>
+
+
+        <span>
+            Fare Per Ticket
+        </span>
+
+        <b id="fare-each">
+            â‚¹0.00
+        </b>
+
+
+        <span>
+            Total Amount
+        </span>
+
+        <b id="fare-total">
+            â‚¹0.00
+        </b>
+
+    </div>
+
+
+    <!-- =====================================================
+         ERROR MESSAGE
+         ===================================================== -->
+
+    <div
+        id="fare-error"
+        class="flash danger"
+        style="display: none;"
+    ></div>
+
+
+    <!-- =====================================================
+         PAYMENT BUTTON
+         ===================================================== -->
+
+    <button
+        class="button full"
+        type="submit"
+        id="continue-payment"
+        disabled
+    >
+        Continue to Payment
+    </button>
+
+
+    <small class="muted">
+
+        Payment is a college-project demo.
+        No real bank, card, OTP or UPI details are collected.
+
+    </small>
+
+</form>
+
+{% endblock %}
+
+
+{% block scripts %}
+
+<script>
+
+/* ============================================================
+   ROUTE DATA FROM FLASK
+   ============================================================ */
+
+const routeData =
+    {{ bus_route_data | default({}) | tojson }};
+
+
+/* ============================================================
+   HTML ELEMENTS
+   ============================================================ */
+
+const bookingForm =
+    document.getElementById(
+        "booking-form"
+    );
+
+const busSelect =
+    document.getElementById(
+        "bus-id"
+    );
+
+const sourceSelect =
+    document.getElementById(
+        "source-stop"
+    );
+
+const destinationSelect =
+    document.getElementById(
+        "destination-stop"
+    );
+
+const countInput =
+    document.getElementById(
+        "passenger-count"
+    );
+
+const fareTypeSelect =
+    document.getElementById(
+        "fare-type"
+    );
+
+const genderSelect =
+    document.getElementById(
+        "gender"
+    );
+
+const travelAt =
+    document.getElementById(
+        "travel-at"
+    );
+
+const selectedBus =
+    document.getElementById(
+        "selected-bus"
+    );
+
+const selectedRoute =
+    document.getElementById(
+        "selected-route"
+    );
+
+const baseFare =
+    document.getElementById(
+        "base-fare"
+    );
+
+const fareSource =
+    document.getElementById(
+        "fare-source"
+    );
+
+const fareDestination =
+    document.getElementById(
+        "fare-destination"
+    );
+
+const segmentCount =
+    document.getElementById(
+        "segment-count"
+    );
+
+const fareCount =
+    document.getElementById(
+        "fare-count"
+    );
+
+const fareEach =
+    document.getElementById(
+        "fare-each"
+    );
+
+const fareTotal =
+    document.getElementById(
+        "fare-total"
+    );
+
+const fareError =
+    document.getElementById(
+        "fare-error"
+    );
+
+const continuePayment =
+    document.getElementById(
+        "continue-payment"
+    );
+
+
+/* ============================================================
+   KEEP ORIGINAL STOP OPTIONS
+   ============================================================ */
+
+const originalStops = [];
+
+
+{% for stop in stops %}
+
+originalStops.push({
+    id: {{ stop.id }},
+    name: {{ stop.name | tojson }}
+});
+
+{% endfor %}
+
+
+/* ============================================================
+   SHOW ERROR
+   ============================================================ */
+
+function showError(message) {
+
+    fareError.textContent =
+        message;
+
+    fareError.style.display =
+        "block";
+
+    continuePayment.disabled =
+        true;
+}
+
+
+/* ============================================================
+   HIDE ERROR
+   ============================================================ */
+
+function hideError() {
+
+    fareError.textContent =
+        "";
+
+    fareError.style.display =
+        "none";
+}
+
+
+/* ============================================================
+   RESET FARE
+   ============================================================ */
+
+function resetFare() {
+
+    fareSource.textContent =
+        "â€”";
+
+    fareDestination.textContent =
+        "â€”";
+
+    segmentCount.textContent =
+        "0";
+
+    fareCount.textContent =
+        countInput.value || "1";
+
+    fareEach.textContent =
+        "â‚¹0.00";
+
+    fareTotal.textContent =
+        "â‚¹0.00";
+
+    continuePayment.disabled =
+        true;
+}
+
+
+/* ============================================================
+   RESET BUS DETAILS
+   ============================================================ */
+
+function resetBusDetails() {
+
+    selectedBus.textContent =
+        "Not selected";
+
+    selectedRoute.textContent =
+        "Not selected";
+
+    baseFare.textContent =
+        "â‚¹0.00";
+}
+
+
+/* ============================================================
+   ADD OPTION
+   ============================================================ */
+
+function addOption(
+    selectElement,
+    id,
+    name
+) {
+
+    const option =
+        document.createElement(
+            "option"
+        );
+
+    option.value =
+        id;
+
+    option.textContent =
+        name;
+
+    selectElement.appendChild(
+        option
+    );
+}
+
+
+/* ============================================================
+   GET STOP NAME
+   ============================================================ */
+
+function getStopName(
+    stopId
+) {
+
+    const stop =
+        originalStops.find(
+            function(item) {
+
+                return Number(item.id)
+                    === Number(stopId);
+
+            }
+        );
+
+    if (!stop) {
+        return "";
+    }
+
+    return stop.name;
+}
+
+
+/* ============================================================
+   FILTER STOPS AFTER BUS SELECTION
+   ============================================================ */
+
+function updateStopsForBus() {
+
+    const busId =
+        busSelect.value;
+
+
+    /* Clear old lists */
+
+    sourceSelect.innerHTML =
+        '<option value="">Select Source</option>';
+
+    destinationSelect.innerHTML =
+        '<option value="">Select Destination</option>';
+
+    destinationSelect.disabled =
+        true;
+
+    resetFare();
+
+    hideError();
+
+
+    if (!busId) {
+
+        sourceSelect.disabled =
+            true;
+
+        resetBusDetails();
+
+        return;
+    }
+
+
+    /* Get selected bus route data */
+
+    const info =
+        routeData[
+            String(busId)
+        ];
+
+
+    if (!info) {
+
+        sourceSelect.disabled =
+            true;
+
+        resetBusDetails();
+
+        showError(
+            "Route information is not available for this bus."
+        );
+
+        return;
+    }
+
+
+    /* Enable source */
+
+    sourceSelect.disabled =
+        false;
+
+
+    /* Show bus */
+
+    selectedBus.textContent =
+        getSelectedBusText();
+
+
+    /* Show base fare */
+
+    const busFare =
+        Number(
+            info.fare || 10
+        );
+
+
+    baseFare.textContent =
+        "â‚¹" +
+        busFare.toFixed(2);
+
+
+    /* --------------------------------------------------------
+       ONLY STOPS OF SELECTED BUS
+       -------------------------------------------------------- */
+
+    const busStops =
+        info.stops.map(
+            function(id) {
+
+                return Number(id);
+
+            }
+        );
+
+
+    busStops.forEach(
+        function(stopId) {
+
+            const stopName =
+                getStopName(
+                    stopId
+                );
+
+            if (stopName) {
+
+                addOption(
+                    sourceSelect,
+                    stopId,
+                    stopName
+                );
+
+            }
+
+        }
+    );
+
+
+    /* Clear destination */
+
+    destinationSelect.innerHTML =
+        '<option value="">First select Source</option>';
+
+    destinationSelect.disabled =
+        true;
+
+}
+
+
+/* ============================================================
+   GET SELECTED BUS TEXT
+   ============================================================ */
+
+function getSelectedBusText() {
+
+    const option =
+        busSelect.options[
+            busSelect.selectedIndex
+        ];
+
+    if (!option) {
+        return "Not selected";
+    }
+
+    return option.text.trim();
+}
+
+
+/* ============================================================
+   SOURCE SELECTED
+   ============================================================ */
+
+function updateDestinations() {
+
+    const busId =
+        busSelect.value;
+
+    const sourceId =
+        Number(
+            sourceSelect.value
+        );
+
+
+    destinationSelect.innerHTML =
+        '<option value="">Select Destination</option>';
+
+    destinationSelect.disabled =
+        true;
+
+    resetFare();
+
+    hideError();
+
+
+    if (!busId || !sourceId) {
+
+        fareSource.textContent =
+            "â€”";
+
+        return;
+    }
+
+
+    const info =
+        routeData[
+            String(busId)
+        ];
+
+
+    if (!info) {
+        return;
+    }
+
+
+    /* Show source */
+
+    fareSource.textContent =
+        getStopName(
+            sourceId
+        );
+
+
+    /* --------------------------------------------------------
+       FIND SOURCE POSITION
+       -------------------------------------------------------- */
+
+    const stops =
+        info.stops.map(
+            function(id) {
+
+                return Number(id);
+
+            }
+        );
+
+
+    const sourcePosition =
+        stops.indexOf(
+            sourceId
+        );
+
+
+    if (
+        sourcePosition === -1
+    ) {
+
+        showError(
+            "Selected source is not on this bus route."
+        );
+
+        return;
+    }
+
+
+    /* --------------------------------------------------------
+       ONLY SHOW DESTINATIONS AFTER SOURCE
+       -------------------------------------------------------- */
+
+    for (
+        let i =
+            sourcePosition + 1;
+
+        i < stops.length;
+
+        i++
+    ) {
+
+        const destinationId =
+            stops[i];
+
+        const destinationName =
+            getStopName(
+                destinationId
+            );
+
+        if (
+            destinationName
+        ) {
+
+            addOption(
+                destinationSelect,
+                destinationId,
+                destinationName
+            );
+
+        }
+
+    }
+
+
+    destinationSelect.disabled =
+        false;
+
+}
+
+
+/* ============================================================
+   CALCULATE FARE
+   ============================================================ */
+
+function updateFare() {
+
+    hideError();
+
+
+    const busId =
+        busSelect.value;
+
+
+    const sourceId =
+        Number(
+            sourceSelect.value
+        );
+
+
+    const destinationId =
+        Number(
+            destinationSelect.value
+        );
+
+
+    let ticketCount =
+        Number(
+            countInput.value || 1
+        );
+
+
+    const fareType =
+        fareTypeSelect.value;
+
+
+    /* Limit tickets */
+
+    if (
+        ticketCount < 1
+    ) {
+
+        ticketCount =
+            1;
+
+        countInput.value =
+            1;
+    }
+
+
+    if (
+        ticketCount > 8
+    ) {
+
+        ticketCount =
+            8;
+
+        countInput.value =
+            8;
+    }
+
+
+    fareCount.textContent =
+        ticketCount;
+
+
+    if (
+        !busId
+        || !sourceId
+        || !destinationId
+    ) {
+
+        fareEach.textContent =
+            "â‚¹0.00";
+
+        fareTotal.textContent =
+            "â‚¹0.00";
+
+        segmentCount.textContent =
+            "0";
+
+        continuePayment.disabled =
+            true;
+
+        return;
+    }
+
+
+    /* Get route */
+
+    const info =
+        routeData[
+            String(busId)
+        ];
+
+
+    if (!info) {
+
+        showError(
+            "Route information is not available."
+        );
+
+        return;
+    }
+
+
+    const stops =
+        info.stops.map(
+            function(id) {
+
+                return Number(id);
+
+            }
+        );
+
+
+    const sourcePosition =
+        stops.indexOf(
+            sourceId
+        );
+
+
+    const destinationPosition =
+        stops.indexOf(
+            destinationId
+        );
+
+
+    /* Check source */
+
+    if (
+        sourcePosition === -1
+    ) {
+
+        showError(
+            "Source is not available on this bus."
+        );
+
+        return;
+    }
+
+
+    /* Check destination */
+
+    if (
+        destinationPosition === -1
+    ) {
+
+        showError(
+            "Destination is not available on this bus."
+        );
+
+        return;
+    }
+
+
+    /* Check direction */
+
+    if (
+        destinationPosition
+        <= sourcePosition
+    ) {
+
+        showError(
+            "Please select a destination after the source."
+        );
+
+        resetFare();
+
+        return;
+    }
+
+
+    /* Number of segments */
+
+    const segments =
+        destinationPosition
+        - sourcePosition;
+
+
+    segmentCount.textContent =
+        segments;
+
+
+    /* Base fare */
+
+    const farePerSegment =
+        Number(
+            info.fare || 10
+        );
+
+
+    /* Full fare */
+
+    let fare =
+        farePerSegment
+        * segments;
+
+
+    /* Half fare */
+
+    if (
+        fareType === "Half"
+    ) {
+
+        fare =
+            fare * 0.50;
+    }
+
+
+    /* Total */
+
+    const total =
+        fare
+        * ticketCount;
+
+
+    /* Display */
+
+    fareSource.textContent =
+        getStopName(
+            sourceId
+        );
+
+
+    fareDestination.textContent =
+        getStopName(
+            destinationId
+        );
+
+
+    fareEach.textContent =
+        "â‚¹"
+        + fare.toFixed(2);
+
+
+    fareTotal.textContent =
+        "â‚¹"
+        + total.toFixed(2);
+
+
+    continuePayment.disabled =
+        false;
+
+}
+
+
+/* ============================================================
+   AUTOMATIC DATE AND TIME
+   ============================================================ */
+
+function updateCurrentDateTime() {
+
+    const now =
+        new Date();
+
+
+    const year =
+        now.getFullYear();
+
+
+    const month =
+        String(
+            now.getMonth() + 1
+        ).padStart(
+            2,
+            "0"
+        );
+
+
+    const day =
+        String(
+            now.getDate()
+        ).padStart(
+            2,
+            "0"
+        );
+
+
+    const hours =
+        String(
+            now.getHours()
+        ).padStart(
+            2,
+            "0"
+        );
+
+
+    const minutes =
+        String(
+            now.getMinutes()
+        ).padStart(
+            2,
+            "0"
+        );
+
+
+    travelAt.value =
+        year
+        + "-"
+        + month
+        + "-"
+        + day
+        + "T"
+        + hours
+        + ":"
+        + minutes;
+}
+
+
+/* ============================================================
+   EVENT: BUS
+   ============================================================ */
+
+busSelect.addEventListener(
+    "change",
+    function() {
+
+        updateStopsForBus();
+
+    }
+);
+
+
+/* ============================================================
+   EVENT: SOURCE
+   ============================================================ */
+
+sourceSelect.addEventListener(
+    "change",
+    function() {
+
+        updateDestinations();
+
+        updateFare();
+
+    }
+);
+
+
+/* ============================================================
+   EVENT: DESTINATION
+   ============================================================ */
+
+destinationSelect.addEventListener(
+    "change",
+    function() {
+
+        updateFare();
+
+    }
+);
+
+
+/* ============================================================
+   EVENT: NUMBER OF TICKETS
+   ============================================================ */
+
+countInput.addEventListener(
+    "input",
+    function() {
+
+        updateFare();
+
+    }
+);
+
+
+/* ============================================================
+   EVENT: FULL / HALF
+   ============================================================ */
+
+fareTypeSelect.addEventListener(
+    "change",
+    function() {
+
+        updateFare();
+
+    }
+);
+
+
+/* ============================================================
+   EVENT: GENDER
+   ============================================================ */
+
+genderSelect.addEventListener(
+    "change",
+    function() {
+
+        hideError();
+
+    }
+);
+
+
+/* ============================================================
+   FORM VALIDATION
+   ============================================================ */
+
+bookingForm.addEventListener(
+    "submit",
+    function(event) {
+
+        const busId =
+            busSelect.value;
+
+        const sourceId =
+            sourceSelect.value;
+
+        const destinationId =
+            destinationSelect.value;
+
+        const gender =
+            genderSelect.value;
+
+        const ticketCount =
+            Number(
+                countInput.value
+            );
+
+
+        if (!busId) {
+
+            event.preventDefault();
+
+            showError(
+                "Please select a bus number."
+            );
+
+            return;
+        }
+
+
+        if (!sourceId) {
+
+            event.preventDefault();
+
+            showError(
+                "Please select a source."
+            );
+
+            return;
+        }
+
+
+        if (!destinationId) {
+
+            event.preventDefault();
+
+            showError(
+                "Please select a destination."
+            );
+
+            return;
+        }
+
+
+        if (!gender) {
+
+            event.preventDefault();
+
+            showError(
+                "Please select Male or Female."
+            );
+
+            return;
+        }
+
+
+        if (
+            ticketCount < 1
+            || ticketCount > 8
+        ) {
+
+            event.preventDefault();
+
+            showError(
+                "Number of tickets must be between 1 and 8."
+            );
+
+            return;
+        }
+
+    }
+);
+
+
+/* ============================================================
+   INITIAL PAGE SETUP
+   ============================================================ */
+
+updateCurrentDateTime();
+
+resetBusDetails();
+
+resetFare();
+
+
+/* Update displayed time every 30 seconds */
+
+setInterval(
+    updateCurrentDateTime,
+    30000
+);
+
+</script>
+
+{% endblock %}

@@ -1,0 +1,7 @@
+﻿{% extends "base.html" %}
+{% block title %}Manage routes Â· CityRide{% endblock %}
+{% block content %}
+<div class="page-heading"><span class="eyebrow">ADMIN</span><h1>Manage routes</h1><p>Enter existing stop names in travel order, separated by commas.</p></div>
+<form class="panel form-panel" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><div class="form-grid"><label>Route name<input name="name" required></label><label>Description<input name="description"></label></div><label>Ordered stops<input name="stops" placeholder="Central Station, City Market, Museum Circle" required></label><p class="muted">Available stops: {{ stops|map(attribute="name")|join(", ") }}</p><button class="button" type="submit">Add route</button></form>
+<div class="card-grid section">{% for route in routes %}<article class="panel"><h3>{{ route.name }}</h3><p>{{ route.stops|map(attribute="stop.name")|join(" â†’ ") }}</p><form method="post" action="{{ url_for('delete_route', route_id=route.id) }}" onsubmit="return confirm('Delete this route?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button-danger" type="submit">Delete route</button></form></article>{% else %}<p class="muted">No routes yet.</p>{% endfor %}</div>
+{% endblock %}

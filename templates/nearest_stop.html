@@ -1,0 +1,236 @@
+﻿{% extends "base.html" %}
+
+{% block title %}Nearest Stop Â· CityRide{% endblock %}
+
+{% block content %}
+
+<div class="page-heading">
+    <span class="eyebrow">NEAREST STOP</span>
+    <h1>Find a stop near you</h1>
+    <p>
+        Allow location access to find the nearest bus stop and view stops on the map.
+    </p>
+</div>
+
+<div class="panel nearest-panel">
+    <div>
+        <h2>ðŸ“ Find your nearest bus stop</h2>
+
+        <p class="muted">
+            Your browser will ask for permission to use your current location.
+        </p>
+
+        <button class="button" type="button" onclick="findNearest()">
+            Find nearest stop
+        </button>
+
+        <a class="button button-outline"
+           href="{{ url_for('bus_stops') }}">
+            Search stops manually
+        </a>
+    </div>
+</div>
+
+<!-- MAP -->
+<section class="panel">
+    <h2>Bus Stop Map</h2>
+
+    <div id="map"
+         style="height:450px; width:100%; border-radius:12px;">
+    </div>
+</section>
+
+{% if nearest %}
+
+<section class="panel nearest-result">
+
+    <span class="eyebrow">
+        NEAREST STOP Â· {{ "%.2f"|format(nearest[0]) }} KM AWAY
+    </span>
+
+    <h2>{{ nearest[1].name }}</h2>
+
+    <p>{{ nearest[1].area }}</p>
+
+    <a class="text-link"
+       href="{{ url_for('bus_stops', q=nearest[1].name) }}">
+        See routes and details â†’
+    </a>
+
+</section>
+
+{% endif %}
+
+{% endblock %}
+
+
+{% block scripts %}
+
+<!-- Leaflet CSS -->
+<link rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+<!-- Leaflet JavaScript -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+
+const stops = [
+    {name: "Pune Station", lat: 18.5285, lon: 73.8743},
+    {name: "Shivajinagar", lat: 18.5308, lon: 73.8522},
+    {name: "Swargate", lat: 18.5018, lon: 73.8636},
+    {name: "Katraj", lat: 18.4575, lon: 73.8567},
+    {name: "Hadapsar", lat: 18.5089, lon: 73.9260},
+    {name: "Kothrud", lat: 18.5074, lon: 73.8077},
+    {name: "Deccan", lat: 18.5174, lon: 73.8408},
+    {name: "Wakad", lat: 18.5986, lon: 73.7697},
+    {name: "Hinjewadi", lat: 18.5913, lon: 73.7389},
+    {name: "Baner", lat: 18.5590, lon: 73.7898}
+];
+
+
+// Create map
+const map = L.map('map').setView([18.5204, 73.8567], 12);
+
+
+// OpenStreetMap tiles
+L.tileLayer(
+    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {
+        attribution: '&copy; OpenStreetMap contributors'
+    }
+).addTo(map);
+
+
+// Add bus stops
+stops.forEach(stop => {
+
+    L.marker([stop.lat, stop.lon])
+        .addTo(map)
+        .bindPopup(
+            "<b>" + stop.name + "</b><br>Bus Stop"
+        );
+
+});
+
+
+// Find nearest stop
+function findNearest() {
+
+    if (!navigator.geolocation) {
+
+        alert("Location is not available. Search stops manually.");
+
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+
+        function(position) {
+
+            const userLat = position.coords.latitude;
+            const userLon = position.coords.longitude;
+
+            // Show user's location
+            L.marker([userLat, userLon])
+                .addTo(map)
+                .bindPopup("<b>Your current location</b>")
+                .openPopup();
+
+            // Calculate nearest stop
+            let nearestStop = null;
+            let shortestDistance = Infinity;
+
+            stops.forEach(stop => {
+
+                const distance = calculateDistance(
+                    userLat,
+                    userLon,
+                    stop.lat,
+                    stop.lon
+                );
+
+                if (distance < shortestDistance) {
+
+                    shortestDistance = distance;
+                    nearestStop = stop;
+
+                }
+
+            });
+
+
+            // Move map to user location
+            map.setView(
+                [userLat, userLon],
+                14
+            );
+
+
+            // Show nearest stop
+            if (nearestStop) {
+
+                L.marker(
+                    [nearestStop.lat, nearestStop.lon]
+                )
+                .addTo(map)
+                .bindPopup(
+                    "<b>Nearest Bus Stop</b><br>" +
+                    nearestStop.name +
+                    "<br>" +
+                    shortestDistance.toFixed(2) +
+                    " km away"
+                )
+                .openPopup();
+
+            }
+
+        },
+
+        function() {
+
+            alert(
+                "Location permission was not granted. Search stops manually."
+            );
+
+        }
+
+    );
+
+}
+
+
+// Distance calculation
+function calculateDistance(lat1, lon1, lat2, lon2) {
+
+    const R = 6371;
+
+    const dLat =
+        (lat2 - lat1) * Math.PI / 180;
+
+    const dLon =
+        (lon2 - lon1) * Math.PI / 180;
+
+    const a =
+        Math.sin(dLat / 2) *
+        Math.sin(dLat / 2) +
+
+        Math.cos(lat1 * Math.PI / 180) *
+        Math.cos(lat2 * Math.PI / 180) *
+
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+
+    const c =
+        2 * Math.atan2(
+            Math.sqrt(a),
+            Math.sqrt(1 - a)
+        );
+
+    return R * c;
+
+}
+
+</script>
+
+{% endblock %}

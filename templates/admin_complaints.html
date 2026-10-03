@@ -1,0 +1,6 @@
+﻿{% extends "base.html" %}
+{% block title %}Manage complaints Â· CityRide{% endblock %}
+{% block content %}
+<div class="page-heading"><span class="eyebrow">ADMIN</span><h1>Complaints</h1><p>Update the status of submitted complaints.</p></div>
+<div class="complaint-list">{% for item in complaints %}<article class="panel"><div class="section-heading"><div><span class="eyebrow">{{ item.reference }} Â· {{ item.created_at|ist }}</span><h3>{{ item.name }} <small>({{ item.contact }})</small></h3></div><span class="tag">{{ item.status }}</span></div><p>{{ item.description }}</p><p class="muted">{{ item.bus_number }} Â· {{ item.route_name }}</p><form class="inline-form" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="complaint_id" value="{{ item.id }}"><select name="status"><option>submitted</option><option>in progress</option><option>resolved</option></select><button class="button button-small" type="submit">Update status</button></form></article>{% else %}<p class="muted">No complaints submitted.</p>{% endfor %}</div>
+{% endblock %}

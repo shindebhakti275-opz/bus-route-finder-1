@@ -1,0 +1,7 @@
+﻿{% extends "base.html" %}
+{% block title %}Manage stops Â· CityRide{% endblock %}
+{% block content %}
+<div class="page-heading"><span class="eyebrow">ADMIN</span><h1>Manage bus stops</h1><p>Add a stop before using it in a route.</p></div>
+<form class="panel inline-form" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Stop name<input name="name" required></label><label>Area<input name="area"></label><button class="button" type="submit">Add stop</button></form>
+<div class="table-wrap"><table><thead><tr><th>Stop</th><th>Area</th><th></th></tr></thead><tbody>{% for stop in stops %}<tr><td>{{ stop.name }}</td><td>{{ stop.area }}</td><td><form method="post" action="{{ url_for('delete_stop', stop_id=stop.id) }}" onsubmit="return confirm('Delete this stop?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button-danger" type="submit">Delete</button></form></td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}

@@ -1,0 +1,178 @@
+﻿<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1"
+    >
+
+    <title>
+        {% block title %}
+        CityRide Â· Bus Routes
+        {% endblock %}
+    </title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='style.css') }}"
+    >
+</head>
+
+<body>
+
+<header class="site-header">
+
+    <a
+        class="brand"
+        href="{{ url_for('index') }}"
+    >
+        <span class="brand-icon">&#8599;</span>
+        CityRide
+    </a>
+
+    <button
+        class="menu-button"
+        onclick="document.querySelector('.nav-links').classList.toggle('open')"
+        aria-label="Toggle menu"
+    >
+        â˜°
+    </button>
+
+    <nav class="nav-links">
+
+        <a href="{{ url_for('find_bus') }}">
+            Find a bus
+        </a>
+
+        <a href="{{ url_for('bus_stops') }}">
+            Stops
+        </a>
+
+        <a href="{{ url_for('admin_routes') }}">
+            Routes
+        </a>
+
+        <a href="{{ url_for('admin_buses') }}">
+            Buses
+        </a>
+
+        <a href="{{ url_for('help') }}">
+            Help
+        </a>
+
+        {% if current_user %}
+
+            <a href="{{ url_for('my_bookings') }}">
+                My bookings
+            </a>
+
+            <a href="{{ url_for('book') }}">
+                Ticket Booking
+            </a>
+
+            <a href="{{ url_for('complaint') }}">
+                Complaints
+            </a>
+
+            {% if current_user.is_admin %}
+
+                <a href="{{ url_for('admin_dashboard') }}">
+                    Admin
+                </a>
+
+            {% else %}
+
+                <a href="{{ url_for('profile') }}">
+                    Profile
+                </a>
+
+            {% endif %}
+
+            <a
+                class="nav-cta"
+                href="{{ url_for('logout') }}"
+            >
+                Log out
+            </a>
+
+        {% else %}
+
+            <a href="{{ url_for('login') }}">
+                Log in
+            </a>
+
+            <a
+                class="nav-cta"
+                href="{{ url_for('register') }}"
+            >
+                Create account
+            </a>
+
+        {% endif %}
+
+    </nav>
+
+</header>
+
+
+<main class="container">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+
+        {% if messages %}
+
+            <div class="flash-stack">
+
+                {% for category, message in messages %}
+
+                    <div class="flash {{ category }}">
+                        {{ message }}
+                    </div>
+
+                {% endfor %}
+
+            </div>
+
+        {% endif %}
+
+    {% endwith %}
+
+
+    {% block content %}
+
+    {% endblock %}
+
+</main>
+
+
+<footer class="site-footer">
+
+    <span>
+        CityRide demonstration Â· Sample schedules,
+        no live tracking or real payments.
+    </span>
+
+    <span>
+        Local time:
+        {{ current_time.strftime("%d %b %Y Â· %I:%M %p") }}
+        IST
+    </span>
+
+</footer>
+
+
+{% block scripts %}
+
+{% endblock %}
+
+</body>
+
+</html>
+
+
+
+
+

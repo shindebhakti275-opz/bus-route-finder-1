@@ -1,0 +1,123 @@
+﻿{% extends "base.html" %}
+
+{% block title %}Create account Â· CityRide{% endblock %}
+
+{% block content %}
+
+<section class="auth-wrap">
+
+```
+<div class="auth-aside">
+    <span class="eyebrow">WELCOME ABOARD</span>
+
+    <h1>Your next ride starts here.</h1>
+
+    <p>
+        Create an account to book and keep your demonstration tickets together.
+    </p>
+</div>
+
+
+<form class="panel auth-form" method="post">
+
+    <input
+        type="hidden"
+        name="csrf_token"
+        value="{{ csrf_token() }}"
+    >
+
+    <h2>Create account</h2>
+
+    <p class="muted">
+        All fields are required.
+    </p>
+
+
+    <label>
+        Full name
+
+        <input
+            type="text"
+            name="name"
+            autocomplete="name"
+            required
+            maxlength="120"
+        >
+    </label>
+
+
+    <label>
+        Email
+
+        <input
+            type="email"
+            name="email"
+            autocomplete="email"
+            required
+        >
+    </label>
+
+
+    <label>
+        Mobile number
+
+        <input
+            type="tel"
+            name="mobile"
+            autocomplete="tel"
+            required
+            maxlength="20"
+        >
+    </label>
+
+
+    <label>
+        Password
+
+        <input
+            type="password"
+            name="password"
+            minlength="8"
+            autocomplete="new-password"
+            required
+        >
+
+        <small>
+            At least 8 characters.
+        </small>
+    </label>
+
+
+    <label>
+        Confirm password
+
+        <input
+            type="password"
+            name="confirm_password"
+            minlength="8"
+            autocomplete="new-password"
+            required
+        >
+    </label>
+
+
+    <button
+        class="button full"
+        type="submit"
+    >
+        Create account
+    </button>
+
+
+    <p class="form-note">
+        Already registered?
+        <a href="{{ url_for('login') }}">Log in</a>
+    </p>
+
+</form>
+```
+
+</section>
+
+{% endblock %}
+

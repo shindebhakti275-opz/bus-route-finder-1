@@ -1,0 +1,3077 @@
+import os
+import random
+import uuid
+from datetime import datetime, timezone, timedelta
+from functools import wraps
+from collections import deque
+
+from flask import (
+    Flask,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    session,
+    flash,
+    jsonify,
+)
+
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
+from dotenv import load_dotenv
+
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
+load_dotenv()
+
+app = Flask(__name__)
+
+app.config["SECRET_KEY"] = os.getenv(
+    "SECRET_KEY",
+    "bus-route-finder-secret-key"
+)
+
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
+    "DATABASE_URL",
+    "postgresql+psycopg2://bus_app:Bhakti@localhost:5432/bus_finder"
+)
+
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+db = SQLAlchemy(app)
+
+
+# ============================================================
+# TIMEZONE
+# ============================================================
+
+IST = timezone(
+    timedelta(hours=5, minutes=30)
+)
+
+
+def now_ist():
+    return datetime.now(IST)
+
+
+# ============================================================
+# JINJA FILTERS
+# ============================================================
+
+@app.template_filter("ist")
+def format_ist(
+    value,
+    format_string="%d %b %Y"
+):
+
+    if not value:
+        return ""
+
+    try:
+
+        if value.tzinfo is None:
+            value = value.replace(
+                tzinfo=timezone.utc
+            )
+
+        value = value.astimezone(IST)
+
+        return value.strftime(
+            format_string
+        )
+
+    except Exception:
+
+        return str(value)
+
+
+@app.template_filter("currency")
+def currency_filter(value):
+
+    try:
+        return f"₹{float(value):.2f}"
+
+    except Exception:
+        return "₹0.00"
+
+
+# ============================================================
+# CSRF TOKEN
+# ============================================================
+
+def csrf_token():
+
+    token = session.get(
+        "_csrf_token"
+    )
+
+    if not token:
+
+        token = os.urandom(24).hex()
+
+        session["_csrf_token"] = token
+
+    return token
+
+
+# ============================================================
+# USER MODEL
+# ============================================================
+
+class User(db.Model):
+
+    __tablename__ = "user"
+
+    id = db.Column(
+        db.Integer,
+        primary_key=True
+    )
+
+    name = db.Column(
+        db.String(120),
+        nullable=True
+    )
+
+    full_name = db.Column(
+        db.String(120),
+        nullable=False
+    )
+
+    email = db.Column(
+        db.String(255),
+        unique=True,
+        nullable=False
+    )
+
+    mobile = db.Column(
+        db.String(20),
+        nullable=False
+    )
+
+    password_hash = db.Column(
+        db.String(255),
+        nullable=False
+    )
+
+    role = db.Column(
+        db.String(20),
+        default="user",
+        nullable=False
+    )
+
+    is_admin = db.Column(
+        db.Boolean,
+        default=False
+    )
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        default=now_ist
+    )
+
+
+# ============================================================
+# BUS STOP
+# ============================================================
+
+class BusStop(db.Model):
+
+    __tablename__ = "bus_stop"
+
+    id = db.Column(
+        db.Integer,
+        primary_key=True
+    )
+
+    name = db.Column(
+        db.String(120),
+        nullable=False
+    )
+
+    area = db.Column(
+        db.String(120)
+    )
+
+    latitude = db.Column(
+        db.Float
+    )
+
+    longitude = db.Column(
+        db.Float
+    )
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        default=now_ist
+    )
+
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        default=now_ist,
+        onupdate=now_ist
+    )
+
+
+# ============================================================
+# BUS ROUTE
+# ============================================================
+
+class BusRoute(db.Model):
+
+    __tablename__ = "bus_route"
+
+    id = db.Column(
+        db.Integer,
+        primary_key=True
+    )
+
+    name = db.Column(
+        db.String(150),
+        nullable=False
+    )
+
+    description = db.Column(
+        db.Text
+    )
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        default=now_ist
+    )
+
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        default=now_ist,
+        onupdate=now_ist
+    )
+
+
+# ============================================================
+# ROUTE STOP
+# ============================================================
+
+class RouteStop(db.Model):
+
+    __tablename__ = "route_stop"
+
+    id = db.Column(
+        db.Integer,
+        primary_key=True
+    )
+
+    route_id = db.Column(
+        db.Integer,
+        db.ForeignKey("bus_route.id"),
+        nullable=False
+    )
+
+    stop_id = db.Column(
+        db.Integer,
+        db.ForeignKey("bus_stop.id"),
+        nullable=False
+    )
+
+    position = db.Column(
+        db.Integer,
+        nullable=False
+    )
+
+    route = db.relationship(
+        "BusRoute",
+        backref=db.backref(
+            "route_stops",
+            lazy=True
+        )
+    )
+
+    stop = db.relationship(
+        "BusStop"
+    )
+
+
+# ============================================================
+# BUS
+# ============================================================
+
+class Bus(db.Model):
+
+    __tablename__ = "bus"
+
+    id = db.Column(
+        db.Integer,
+        primary_key=True
+    )
+
+    bus_number = db.Column(
+        db.String(50),
+        nullable=False
+    )
+
+    name = db.Column(
+        db.String(150),
+        nullable=False
+    )
+
+    route_id = db.Column(
+        db.Integer,
+        db.ForeignKey("bus_route.id"),
+        nullable=False
+    )
+
+    first_bus_time = db.Column(
+        db.String(10)
+    )
+
+    last_bus_time = db.Column(
+        db.String(10)
+    )
+
+    frequency_mins = db.Column(
+        db.Integer
+    )
+
+    base_fare_per_segment = db.Column(
+        db.Numeric(10, 2),
+        default=10
+    )
+
+    active = db.Column(
+        db.Boolean,
+        default=True
+    )
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        default=now_ist
+    )
+
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        default=now_ist,
+        onupdate=now_ist
+    )
+
+    route = db.relationship(
+        "BusRoute",
+        backref=db.backref(
+            "buses",
+            lazy=True
+        )
+    )
+
+
+# ============================================================
+# BOOKING
+# ============================================================
+
+class Booking(db.Model):
+
+    __tablename__ = "booking"
+
+    id = db.Column(
+        db.Integer,
+        primary_key=True
+    )
+
+    reference = db.Column(
+        db.String(50),
+        unique=True,
+        nullable=False
+    )
+
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id"),
+        nullable=False
+    )
+
+    bus_id = db.Column(
+        db.Integer,
+        db.ForeignKey("bus.id"),
+        nullable=False
+    )
+
+    source_stop_id = db.Column(
+        db.Integer,
+        db.ForeignKey("bus_stop.id"),
+        nullable=False
+    )
+
+    destination_stop_id = db.Column(
+        db.Integer,
+        db.ForeignKey("bus_stop.id"),
+        nullable=False
+    )
+
+    travel_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False
+    )
+
+    passenger_category = db.Column(
+        db.String(50),
+        default="Adult",
+        nullable=False
+    )
+
+    # NEW
+    fare_type = db.Column(
+        db.String(20),
+        default="Full",
+        nullable=False
+    )
+
+    # NEW
+    gender = db.Column(
+        db.String(10),
+        default="Male",
+        nullable=False
+    )
+
+    passenger_count = db.Column(
+        db.Integer,
+        default=1,
+        nullable=False
+    )
+
+    fare_each = db.Column(
+        db.Numeric(10, 2),
+        nullable=False
+    )
+
+    total_fare = db.Column(
+        db.Numeric(10, 2),
+        nullable=False
+    )
+
+    status = db.Column(
+        db.String(30),
+        default="pending",
+        nullable=False
+    )
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        default=now_ist
+    )
+
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        default=now_ist,
+        onupdate=now_ist
+    )
+
+    user = db.relationship(
+        "User",
+        backref=db.backref(
+            "bookings",
+            lazy=True
+        )
+    )
+
+    bus = db.relationship(
+        "Bus"
+    )
+
+    source = db.relationship(
+        "BusStop",
+        foreign_keys=[source_stop_id]
+    )
+
+    destination = db.relationship(
+        "BusStop",
+        foreign_keys=[destination_stop_id]
+    )
+
+
+# ============================================================
+# PAYMENT
+# Matches PostgreSQL payment table:
+# payment_id, booking_id, mode, amount, status, created_at
+# ============================================================
+
+class Payment(db.Model):
+
+    __tablename__ = "payment"
+
+    id = db.Column(
+        db.Integer,
+        primary_key=True
+    )
+
+    payment_id = db.Column(
+        db.String(32),
+        unique=True,
+        nullable=False
+    )
+
+    booking_id = db.Column(
+        db.Integer,
+        db.ForeignKey("booking.id"),
+        unique=True,
+        nullable=False
+    )
+
+    mode = db.Column(
+        db.String(50),
+        nullable=False
+    )
+
+    amount = db.Column(
+        db.Numeric(10, 2),
+        nullable=False
+    )
+
+    status = db.Column(
+        db.String(30),
+        default="successful",
+        nullable=False
+    )
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        default=now_ist
+    )
+
+    booking = db.relationship(
+        "Booking",
+        backref=db.backref(
+            "payment",
+            uselist=False
+        )
+    )
+
+
+# ============================================================
+# COMPLAINT
+# Matches your existing PostgreSQL complaint table
+# ============================================================
+
+class Complaint(db.Model):
+
+    __tablename__ = "complaint"
+
+    id = db.Column(
+        db.Integer,
+        primary_key=True
+    )
+
+    reference = db.Column(
+        db.String(24),
+        unique=True,
+        nullable=False
+    )
+
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id")
+    )
+
+    name = db.Column(
+        db.String(120),
+        nullable=False
+    )
+
+    contact = db.Column(
+        db.String(255),
+        nullable=False
+    )
+
+    bus_number = db.Column(
+        db.String(30),
+        nullable=False,
+        default=""
+    )
+
+    route_name = db.Column(
+        db.String(120),
+        nullable=False,
+        default=""
+    )
+
+    description = db.Column(
+        db.Text,
+        nullable=False
+    )
+
+    status = db.Column(
+        db.String(30),
+        nullable=False,
+        default="submitted"
+    )
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=now_ist
+    )
+
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=now_ist,
+        onupdate=now_ist
+    )
+
+    # Added columns
+    subject = db.Column(
+        db.String(200),
+        default=""
+    )
+
+    message = db.Column(
+        db.Text,
+        default=""
+    )
+
+    admin_reply = db.Column(
+        db.Text
+    )
+
+    user = db.relationship(
+        "User",
+        backref=db.backref(
+            "complaints",
+            lazy=True
+        )
+    )
+
+
+# ============================================================
+# CURRENT USER
+# ============================================================
+
+def get_current_user():
+
+    user_id = session.get(
+        "user_id"
+    )
+
+    if not user_id:
+        return None
+
+    return db.session.get(
+        User,
+        user_id
+    )
+
+
+@app.context_processor
+def inject_global_values():
+
+    return {
+        "current_user": get_current_user(),
+        "current_time": now_ist(),
+        "csrf_token": csrf_token
+    }
+
+
+# ============================================================
+# AUTHENTICATION
+# ============================================================
+
+def login_required(function):
+
+    @wraps(function)
+    def wrapper(*args, **kwargs):
+
+        if not session.get(
+            "user_id"
+        ):
+
+            flash(
+                "Please login first.",
+                "warning"
+            )
+
+            return redirect(
+                url_for("login")
+            )
+
+        return function(
+            *args,
+            **kwargs
+        )
+
+    return wrapper
+
+
+def admin_required(function):
+
+    @wraps(function)
+    def wrapper(*args, **kwargs):
+
+        user = get_current_user()
+
+        if not user:
+
+            flash(
+                "Please login first.",
+                "warning"
+            )
+
+            return redirect(
+                url_for("login")
+            )
+
+        if (
+            not user.is_admin
+            and user.role != "admin"
+        ):
+
+            flash(
+                "Admin access required.",
+                "danger"
+            )
+
+            return redirect(
+                url_for("index")
+            )
+
+        return function(
+            *args,
+            **kwargs
+        )
+
+    return wrapper
+
+
+# ============================================================
+# REFERENCE GENERATORS
+# ============================================================
+
+def generate_reference():
+
+    while True:
+
+        reference = (
+            "BUS"
+            + now_ist().strftime(
+                "%Y%m%d"
+            )
+            + str(
+                random.randint(
+                    1000,
+                    9999
+                )
+            )
+        )
+
+        if not Booking.query.filter_by(
+            reference=reference
+        ).first():
+
+            return reference
+
+
+def generate_payment_id():
+
+    while True:
+
+        payment_id = (
+            "PAY"
+            + uuid.uuid4().hex[:20].upper()
+        )
+
+        if not Payment.query.filter_by(
+            payment_id=payment_id
+        ).first():
+
+            return payment_id
+
+
+def generate_complaint_reference():
+
+    while True:
+
+        reference = (
+            "CMP"
+            + now_ist().strftime(
+                "%Y%m%d"
+            )
+            + str(
+                random.randint(
+                    1000,
+                    9999
+                )
+            )
+        )
+
+        if not Complaint.query.filter_by(
+            reference=reference
+        ).first():
+
+            return reference
+
+
+# ============================================================
+# ROUTE HELPERS
+# ============================================================
+
+def get_route_stops(route_id):
+
+    rows = (
+        RouteStop.query
+        .filter_by(
+            route_id=route_id
+        )
+        .order_by(
+            RouteStop.position
+        )
+        .all()
+    )
+
+    return [
+        row.stop
+        for row in rows
+    ]
+
+
+def get_route_stop_ids(route_id):
+
+    rows = (
+        RouteStop.query
+        .filter_by(
+            route_id=route_id
+        )
+        .order_by(
+            RouteStop.position
+        )
+        .all()
+    )
+
+    return [
+        row.stop_id
+        for row in rows
+    ]
+
+
+def get_route_buses(route_id):
+
+    return (
+        Bus.query
+        .filter_by(
+            route_id=route_id,
+            active=True
+        )
+        .order_by(
+            Bus.id
+        )
+        .all()
+    )
+
+
+# ============================================================
+# DYNAMIC ROUTE SEARCH
+# ============================================================
+
+def build_route_graph():
+
+    graph = {}
+
+    routes = BusRoute.query.all()
+
+    for route in routes:
+
+        stop_ids = get_route_stop_ids(
+            route.id
+        )
+
+        buses = get_route_buses(
+            route.id
+        )
+
+        if not stop_ids or not buses:
+            continue
+
+        for index, stop_id in enumerate(
+            stop_ids
+        ):
+
+            graph.setdefault(
+                stop_id,
+                []
+            )
+
+            for next_index in range(
+                index + 1,
+                len(stop_ids)
+            ):
+
+                destination_id = (
+                    stop_ids[next_index]
+                )
+
+                graph[stop_id].append(
+                    {
+                        "route": route,
+                        "bus": buses[0],
+                        "destination_id": destination_id,
+                        "stops": stop_ids[
+                            index:next_index + 1
+                        ]
+                    }
+                )
+
+    return graph
+
+
+def find_dynamic_route(
+    source_id,
+    destination_id
+):
+
+    if source_id == destination_id:
+        return None
+
+    graph = build_route_graph()
+
+    queue = deque()
+
+    queue.append(
+        (
+            source_id,
+            []
+        )
+    )
+
+    visited = {
+        source_id
+    }
+
+    while queue:
+
+        current_stop, journey = (
+            queue.popleft()
+        )
+
+        for connection in graph.get(
+            current_stop,
+            []
+        ):
+
+            next_stop = connection[
+                "destination_id"
+            ]
+
+            new_journey = (
+                journey
+                + [connection]
+            )
+
+            if next_stop == destination_id:
+
+                return new_journey
+
+            if next_stop not in visited:
+
+                visited.add(
+                    next_stop
+                )
+
+                if len(new_journey) < 5:
+
+                    queue.append(
+                        (
+                            next_stop,
+                            new_journey
+                        )
+                    )
+
+    return None
+
+
+def make_journey_details(
+    journey
+):
+
+    result = []
+
+    total_fare = 0
+
+    for leg in journey:
+
+        bus = leg["bus"]
+
+        stop_ids = leg["stops"]
+
+        fare_per_segment = float(
+            bus.base_fare_per_segment
+            or 10
+        )
+
+        segments = max(
+            len(stop_ids) - 1,
+            1
+        )
+
+        fare = (
+            fare_per_segment
+            * segments
+        )
+
+        total_fare += fare
+
+        stops = [
+            db.session.get(
+                BusStop,
+                stop_id
+            )
+            for stop_id in stop_ids
+        ]
+
+        result.append(
+            {
+                "bus": bus,
+                "route": leg["route"],
+                "stops": stops,
+                "fare": fare
+            }
+        )
+
+    return result, total_fare
+
+
+# ============================================================
+# HOME
+# ============================================================
+
+@app.route("/")
+def index():
+
+    stops = (
+        BusStop.query
+        .order_by(
+            BusStop.name
+        )
+        .all()
+    )
+
+    buses = (
+        Bus.query
+        .filter_by(
+            active=True
+        )
+        .order_by(
+            Bus.id
+        )
+        .limit(8)
+        .all()
+    )
+
+    routes = (
+        BusRoute.query
+        .order_by(
+            BusRoute.id
+        )
+        .limit(8)
+        .all()
+    )
+
+    return render_template(
+        "index.html",
+        stops=stops,
+        buses=buses,
+        routes=routes,
+        current_time=now_ist()
+    )
+
+
+# ============================================================
+# REGISTER
+# ============================================================
+
+@app.route(
+    "/register",
+    methods=["GET", "POST"]
+)
+def register():
+
+    if request.method == "POST":
+
+        name = (
+            request.form.get("name")
+            or request.form.get(
+                "full_name"
+            )
+            or ""
+        ).strip()
+
+        email = (
+            request.form.get("email")
+            or ""
+        ).strip().lower()
+
+        mobile = (
+            request.form.get("mobile")
+            or ""
+        ).strip()
+
+        password = (
+            request.form.get("password")
+            or ""
+        )
+
+        confirm_password = (
+            request.form.get(
+                "confirm_password"
+            )
+            or request.form.get(
+                "password_confirmation"
+            )
+            or ""
+        )
+
+        if (
+            not name
+            or not email
+            or not mobile
+            or not password
+        ):
+
+            flash(
+                "Please fill all required fields.",
+                "danger"
+            )
+
+            return render_template(
+                "register.html"
+            )
+
+        if (
+            confirm_password
+            and password != confirm_password
+        ):
+
+            flash(
+                "Passwords do not match.",
+                "danger"
+            )
+
+            return render_template(
+                "register.html"
+            )
+
+        existing = User.query.filter_by(
+            email=email
+        ).first()
+
+        if existing:
+
+            flash(
+                "Email already registered.",
+                "danger"
+            )
+
+            return render_template(
+                "register.html"
+            )
+
+        user = User(
+            name=name,
+            full_name=name,
+            email=email,
+            mobile=mobile,
+            password_hash=generate_password_hash(
+                password
+            ),
+            role="user",
+            is_admin=False
+        )
+
+        db.session.add(user)
+        db.session.commit()
+
+        flash(
+            "Registration successful. Please login.",
+            "success"
+        )
+
+        return redirect(
+            url_for("login")
+        )
+
+    return render_template(
+        "register.html"
+    )
+
+
+# ============================================================
+# LOGIN
+# ============================================================
+
+@app.route(
+    "/login",
+    methods=["GET", "POST"]
+)
+def login():
+
+    if request.method == "POST":
+
+        email = (
+            request.form.get("email")
+            or ""
+        ).strip().lower()
+
+        password = (
+            request.form.get("password")
+            or ""
+        )
+
+        user = User.query.filter_by(
+            email=email
+        ).first()
+
+        if (
+            user
+            and check_password_hash(
+                user.password_hash,
+                password
+            )
+        ):
+
+            session["user_id"] = user.id
+
+            flash(
+                "Login successful.",
+                "success"
+            )
+
+            if (
+                user.is_admin
+                or user.role == "admin"
+            ):
+
+                return redirect(
+                    url_for(
+                        "admin_dashboard"
+                    )
+                )
+
+            return redirect(
+                url_for("index")
+            )
+
+        flash(
+            "Invalid email or password.",
+            "danger"
+        )
+
+    return render_template(
+        "login.html"
+    )
+
+
+# ============================================================
+# LOGOUT
+# ============================================================
+
+@app.route("/logout")
+def logout():
+
+    session.pop(
+        "user_id",
+        None
+    )
+
+    session.pop(
+        "_csrf_token",
+        None
+    )
+
+    flash(
+        "You have been logged out.",
+        "success"
+    )
+
+    return redirect(
+        url_for("index")
+    )
+
+
+# ============================================================
+# FIND BUS
+# ============================================================
+
+@app.route(
+    "/find-bus",
+    methods=["GET", "POST"]
+)
+def find_bus():
+
+    stops = BusStop.query.order_by(BusStop.name).all()
+
+    options = []
+    results = None
+    journey = None
+    total_fare = 0
+
+    source_id = request.values.get("source", type=int)
+    destination_id = request.values.get("destination", type=int)
+
+    if source_id and destination_id:
+
+        if source_id == destination_id:
+            flash(
+                "Source and destination cannot be the same.",
+                "warning"
+            )
+
+        else:
+            routes = BusRoute.query.order_by(BusRoute.id).all()
+
+            # -------------------------------------------------
+            # 1. DIRECT BUS SEARCH
+            # -------------------------------------------------
+
+            direct_options = []
+
+            for route in routes:
+
+                route_stops = get_route_stops(route.id)
+                buses = get_route_buses(route.id)
+
+                if not route_stops or not buses:
+                    continue
+
+                source_position = next(
+                    (
+                        i for i, stop in enumerate(route_stops)
+                        if stop and stop.id == source_id
+                    ),
+                    None
+                )
+
+                destination_position = next(
+                    (
+                        i for i, stop in enumerate(route_stops)
+                        if stop and stop.id == destination_id
+                    ),
+                    None
+                )
+
+                if (
+                    source_position is None
+                    or destination_position is None
+                    or source_position >= destination_position
+                ):
+                    continue
+
+                journey_stops = route_stops[
+                    source_position:destination_position + 1
+                ]
+
+                segment_count = max(len(journey_stops) - 1, 1)
+                stop_count = len(journey_stops)
+
+                for bus in buses:
+
+                    fare_per_segment = float(
+                        bus.base_fare_per_segment or 10
+                    )
+
+                    fare = fare_per_segment * segment_count
+
+                    direct_options.append({
+                        "type": "direct",
+                        "recommended": False,
+                        "bus": bus,
+                        "match": {
+                            "fare": fare,
+                            "journey_stops": journey_stops,
+                            "segment_count": segment_count,
+                            "stop_count": stop_count,
+                            "all_stops": route_stops
+                        }
+                    })
+
+            # If a direct bus exists, show direct buses only.
+            if direct_options:
+
+                options = direct_options
+
+            # -------------------------------------------------
+            # 2. ONE-TRANSFER / TWO-BUS SEARCH
+            # -------------------------------------------------
+
+            else:
+
+                transfer_options = []
+
+                for first_route in routes:
+
+                    first_route_stops = get_route_stops(
+                        first_route.id
+                    )
+
+                    first_buses = get_route_buses(
+                        first_route.id
+                    )
+
+                    if not first_route_stops or not first_buses:
+                        continue
+
+                    source_position = next(
+                        (
+                            i for i, stop in enumerate(first_route_stops)
+                            if stop and stop.id == source_id
+                        ),
+                        None
+                    )
+
+                    if source_position is None:
+                        continue
+
+                    # Every stop after source can be a transfer stop.
+                    for first_transfer_position in range(
+                        source_position + 1,
+                        len(first_route_stops)
+                    ):
+
+                        transfer_stop = first_route_stops[
+                            first_transfer_position
+                        ]
+
+                        if transfer_stop is None:
+                            continue
+
+                        transfer_id = transfer_stop.id
+
+                        first_journey_stops = first_route_stops[
+                            source_position:first_transfer_position + 1
+                        ]
+
+                        first_segment_count = max(
+                            len(first_journey_stops) - 1,
+                            1
+                        )
+
+                        first_stop_count = len(
+                            first_journey_stops
+                        )
+
+                        for second_route in routes:
+
+                            if second_route.id == first_route.id:
+                                continue
+
+                            second_route_stops = get_route_stops(
+                                second_route.id
+                            )
+
+                            second_buses = get_route_buses(
+                                second_route.id
+                            )
+
+                            if (
+                                not second_route_stops
+                                or not second_buses
+                            ):
+                                continue
+
+                            transfer_position = next(
+                                (
+                                    i for i, stop in enumerate(second_route_stops)
+                                    if stop and stop.id == transfer_id
+                                ),
+                                None
+                            )
+
+                            destination_position = next(
+                                (
+                                    i for i, stop in enumerate(second_route_stops)
+                                    if stop and stop.id == destination_id
+                                ),
+                                None
+                            )
+
+                            if (
+                                transfer_position is None
+                                or destination_position is None
+                                or transfer_position >= destination_position
+                            ):
+                                continue
+
+                            second_journey_stops = second_route_stops[
+                                transfer_position:destination_position + 1
+                            ]
+
+                            second_segment_count = max(
+                                len(second_journey_stops) - 1,
+                                1
+                            )
+
+                            second_stop_count = len(
+                                second_journey_stops
+                            )
+
+                            for first_bus in first_buses:
+
+                                first_fare = (
+                                    float(
+                                        first_bus.base_fare_per_segment
+                                        or 10
+                                    )
+                                    * first_segment_count
+                                )
+
+                                for second_bus in second_buses:
+
+                                    second_fare = (
+                                        float(
+                                            second_bus.base_fare_per_segment
+                                            or 10
+                                        )
+                                        * second_segment_count
+                                    )
+
+                                    transfer_options.append({
+                                        "type": "transfer",
+                                        "recommended": False,
+
+                                        "bus": first_bus,
+
+                                        "match": {
+                                            "fare": first_fare,
+                                            "journey_stops":
+                                                first_journey_stops,
+                                            "segment_count":
+                                                first_segment_count,
+                                            "stop_count":
+                                                first_stop_count,
+                                            "all_stops":
+                                                first_route_stops
+                                        },
+
+                                        "transfer_stop":
+                                            transfer_stop,
+
+                                        "second_bus":
+                                            second_bus,
+
+                                        "second_match": {
+                                            "fare": second_fare,
+                                            "journey_stops":
+                                                second_journey_stops,
+                                            "segment_count":
+                                                second_segment_count,
+                                            "stop_count":
+                                                second_stop_count,
+                                            "all_stops":
+                                                second_route_stops
+                                        },
+
+                                        "total_fare":
+                                            first_fare + second_fare,
+
+                                        "total_segments":
+                                            first_segment_count
+                                            + second_segment_count,
+
+                                        "total_stops":
+                                            first_stop_count
+                                            + second_stop_count
+                                            - 1
+                                    })
+
+                # Remove duplicate transfer combinations.
+                seen = set()
+                unique_transfer_options = []
+
+                for item in transfer_options:
+
+                    key = (
+                        item["bus"].id,
+                        item["transfer_stop"].id,
+                        item["second_bus"].id
+                    )
+
+                    if key not in seen:
+                        seen.add(key)
+                        unique_transfer_options.append(item)
+
+                options = unique_transfer_options
+
+            # -------------------------------------------------
+            # FINAL RESULT VALUES
+            # -------------------------------------------------
+
+            if options:
+
+                options[0]["recommended"] = True
+                results = options
+
+                if options[0]["type"] == "direct":
+                    total_fare = options[0]["match"]["fare"]
+                else:
+                    total_fare = options[0]["total_fare"]
+
+            else:
+
+                flash(
+                    "No direct bus or one-transfer route "
+                    "was found between these stops.",
+                    "warning"
+                )
+
+    return render_template(
+        "find_bus.html",
+        stops=stops,
+        options=options,
+        results=results,
+        journey=journey,
+        total_fare=total_fare,
+        source_id=source_id,
+        destination_id=destination_id
+    )
+
+
+# BUS STOPS
+# ============================================================
+
+@app.route("/bus-stops")
+def bus_stops():
+
+    query = (
+        request.args.get("q", "")
+        or ""
+    ).strip()
+
+    stops_query = BusStop.query
+
+    if query:
+        search = f"%{query}%"
+        stops_query = stops_query.filter(
+            (BusStop.name.ilike(search))
+            | (BusStop.area.ilike(search))
+        )
+
+    stops = (
+        stops_query
+        .order_by(
+            BusStop.name
+        )
+        .all()
+    )
+
+    stop_routes = {}
+
+    for stop in stops:
+        rows = (
+            RouteStop.query
+            .filter_by(
+                stop_id=stop.id
+            )
+            .order_by(
+                RouteStop.position
+            )
+            .all()
+        )
+
+        stop_routes[stop.id] = [
+            row.route
+            for row in rows
+            if row.route is not None
+        ]
+
+    return render_template(
+        "bus_stops.html",
+        stops=stops,
+        stop_routes=stop_routes,
+        query=query
+    )
+
+
+# ============================================================
+# ROUTES
+# ============================================================
+
+@app.route("/routes")
+def routes():
+
+    route_list = (
+        BusRoute.query
+        .order_by(
+            BusRoute.id
+        )
+        .all()
+    )
+
+    route_data = []
+
+    for route in route_list:
+
+        route_data.append(
+            {
+                "route": route,
+                "stops": get_route_stops(
+                    route.id
+                ),
+                "buses": get_route_buses(
+                    route.id
+                )
+            }
+        )
+
+    # Your template folder showed schedule.html,
+    # so use that existing template.
+    return render_template(
+        "schedule.html",
+        routes=route_list,
+        route_data=route_data
+    )
+
+
+# ============================================================
+# COMPATIBILITY ROUTES
+# ============================================================
+
+@app.route(
+    "/schedule",
+    endpoint="schedule"
+)
+def schedule():
+
+    return redirect(
+        url_for("routes")
+    )
+
+
+@app.route(
+    "/nearest-stop",
+    endpoint="nearest_stop"
+)
+def nearest_stop():
+
+    return render_template(
+        "nearest_stop.html"
+    )
+
+
+@app.route(
+    "/help",
+    endpoint="help"
+)
+def help_page():
+
+    return render_template(
+        "help.html"
+    )
+
+
+@app.route(
+    "/my-tickets",
+    endpoint="my_tickets"
+)
+@login_required
+def my_tickets():
+
+    return redirect(
+        url_for("my_bookings")
+    )
+
+
+# ============================================================
+# BUSES
+# ============================================================
+
+@app.route("/buses")
+def buses():
+
+    bus_list = (
+        Bus.query
+        .filter_by(
+            active=True
+        )
+        .order_by(
+            Bus.id
+        )
+        .all()
+    )
+
+    return render_template(
+        "index.html",
+        stops=(
+            BusStop.query
+            .order_by(
+                BusStop.name
+            )
+            .all()
+        ),
+        buses=bus_list,
+        routes=(
+            BusRoute.query
+            .order_by(
+                BusRoute.id
+            )
+            .limit(8)
+            .all()
+        ),
+        current_time=now_ist()
+    )
+
+
+# ============================================================
+# TICKET BOOKING
+# ============================================================
+
+@app.route(
+    "/book",
+    methods=["GET", "POST"]
+)
+@login_required
+def book():
+
+    stops = (
+        BusStop.query
+        .order_by(
+            BusStop.name
+        )
+        .all()
+    )
+
+    buses = (
+        Bus.query
+        .filter_by(
+            active=True
+        )
+        .order_by(
+            Bus.id
+        )
+        .all()
+    )
+
+    # Data used by booking.html
+    bus_route_data = {}
+
+    for bus in buses:
+
+        bus_route_data[
+            str(bus.id)
+        ] = {
+            "stops": get_route_stop_ids(
+                bus.route_id
+            ),
+            "fare": float(
+                bus.base_fare_per_segment
+                or 10
+            )
+        }
+
+    if request.method == "POST":
+
+        bus_id = request.form.get(
+            "bus_id",
+            type=int
+        )
+
+        source_id = request.form.get(
+            "source_stop_id",
+            type=int
+        )
+
+        destination_id = request.form.get(
+            "destination_stop_id",
+            type=int
+        )
+
+        passenger_count = request.form.get(
+            "passenger_count",
+            type=int
+        ) or 1
+
+        fare_type = (
+            request.form.get(
+                "fare_type"
+            )
+            or "Full"
+        ).strip()
+
+        gender = (
+            request.form.get(
+                "gender"
+            )
+            or "Male"
+        ).strip()
+
+        # ----------------------------------------------------
+        # VALIDATION
+        # ----------------------------------------------------
+
+        if (
+            passenger_count < 1
+            or passenger_count > 8
+        ):
+
+            flash(
+                "Number of tickets must be between 1 and 8.",
+                "danger"
+            )
+
+            return redirect(
+                url_for("book")
+            )
+
+        if fare_type not in (
+            "Full",
+            "Half"
+        ):
+
+            flash(
+                "Please select Full or Half ticket.",
+                "danger"
+            )
+
+            return redirect(
+                url_for("book")
+            )
+
+        if gender not in (
+            "Male",
+            "Female"
+        ):
+
+            flash(
+                "Please select Male or Female.",
+                "danger"
+            )
+
+            return redirect(
+                url_for("book")
+            )
+
+        bus = db.session.get(
+            Bus,
+            bus_id
+        )
+
+        source = db.session.get(
+            BusStop,
+            source_id
+        )
+
+        destination = db.session.get(
+            BusStop,
+            destination_id
+        )
+
+        if (
+            not bus
+            or not source
+            or not destination
+        ):
+
+            flash(
+                "Please select a valid bus, source and destination.",
+                "danger"
+            )
+
+            return redirect(
+                url_for("book")
+            )
+
+        if source.id == destination.id:
+
+            flash(
+                "Source and destination cannot be the same.",
+                "danger"
+            )
+
+            return redirect(
+                url_for("book")
+            )
+
+        stop_ids = get_route_stop_ids(
+            bus.route_id
+        )
+
+        if (
+            source.id not in stop_ids
+            or destination.id not in stop_ids
+        ):
+
+            flash(
+                "This bus does not serve both selected stops.",
+                "danger"
+            )
+
+            return redirect(
+                url_for("book")
+            )
+
+        source_position = stop_ids.index(
+            source.id
+        )
+
+        destination_position = stop_ids.index(
+            destination.id
+        )
+
+        if (
+            source_position
+            >= destination_position
+        ):
+
+            flash(
+                "Please select the stops in the correct journey direction.",
+                "danger"
+            )
+
+            return redirect(
+                url_for("book")
+            )
+
+        # ----------------------------------------------------
+        # FARE
+        # ----------------------------------------------------
+
+        segments = (
+            destination_position
+            - source_position
+        )
+
+        full_fare_each = (
+            float(
+                bus.base_fare_per_segment
+                or 10
+            )
+            * segments
+        )
+
+        if fare_type == "Half":
+
+            fare_each = (
+                full_fare_each
+                * 0.50
+            )
+
+        else:
+
+            fare_each = (
+                full_fare_each
+            )
+
+        total_fare = (
+            fare_each
+            * passenger_count
+        )
+
+        # ----------------------------------------------------
+        # CREATE PENDING BOOKING
+        # ----------------------------------------------------
+
+        booking = Booking(
+
+            reference=generate_reference(),
+
+            user_id=session[
+                "user_id"
+            ],
+
+            bus_id=bus.id,
+
+            source_stop_id=source.id,
+
+            destination_stop_id=destination.id,
+
+            # Automatic current date and time
+            travel_at=now_ist(),
+
+            passenger_category="Adult",
+
+            fare_type=fare_type,
+
+            gender=gender,
+
+            passenger_count=passenger_count,
+
+            fare_each=fare_each,
+
+            total_fare=total_fare,
+
+            status="pending"
+        )
+
+        db.session.add(
+            booking
+        )
+
+        db.session.commit()
+
+        # Go to payment
+        return redirect(
+            url_for(
+                "payment",
+                reference=booking.reference
+            )
+        )
+
+    return render_template(
+        "booking.html",
+
+        stops=stops,
+
+        buses=buses,
+
+        current_time=now_ist(),
+
+        bus_route_data=bus_route_data
+    )
+
+
+# ============================================================
+# PAYMENT
+# ============================================================
+
+@app.route(
+    "/payment/<reference>",
+    methods=["GET", "POST"]
+)
+@login_required
+def payment(reference):
+
+    booking = Booking.query.filter_by(
+        reference=reference,
+        user_id=session[
+            "user_id"
+        ]
+    ).first_or_404()
+
+    existing_payment = Payment.query.filter_by(
+        booking_id=booking.id
+    ).first()
+
+    if existing_payment:
+
+        return redirect(
+            url_for(
+                "ticket",
+                reference=booking.reference
+            )
+        )
+
+    if request.method == "POST":
+
+        mode = (
+            request.form.get(
+                "mode"
+            )
+            or ""
+        ).strip()
+
+        if mode not in (
+            "PhonePe",
+            "Google Pay"
+        ):
+
+            flash(
+                "Please select PhonePe or Google Pay.",
+                "danger"
+            )
+
+            return redirect(
+                url_for(
+                    "payment",
+                    reference=booking.reference
+                )
+            )
+
+        payment = Payment(
+
+            payment_id=generate_payment_id(),
+
+            booking_id=booking.id,
+
+            mode=mode,
+
+            amount=booking.total_fare,
+
+            status="successful"
+        )
+
+        booking.status = "paid"
+
+        db.session.add(
+            payment
+        )
+
+        db.session.commit()
+
+        flash(
+            "Payment completed successfully.",
+            "success"
+        )
+
+        return redirect(
+            url_for(
+                "ticket",
+                reference=booking.reference
+            )
+        )
+
+    return render_template(
+        "payment.html",
+        booking=booking
+    )
+
+
+# ============================================================
+# TICKET
+# ============================================================
+
+@app.route(
+    "/ticket/<reference>"
+)
+@login_required
+def ticket(reference):
+
+    booking = Booking.query.filter_by(
+        reference=reference
+    ).first_or_404()
+
+    user = get_current_user()
+
+    if (
+        booking.user_id != user.id
+        and not user.is_admin
+        and user.role != "admin"
+    ):
+
+        flash(
+            "You cannot view this ticket.",
+            "danger"
+        )
+
+        return redirect(
+            url_for("my_bookings")
+        )
+
+    return render_template(
+        "ticket.html",
+        booking=booking
+    )
+
+
+# ============================================================
+# MY BOOKINGS
+# ============================================================
+
+@app.route(
+    "/my-bookings"
+)
+@login_required
+def my_bookings():
+
+    bookings = (
+        Booking.query
+        .filter_by(
+            user_id=session[
+                "user_id"
+            ]
+        )
+        .order_by(
+            Booking.created_at.desc()
+        )
+        .all()
+    )
+
+    return render_template(
+        "my_tickets.html",
+        bookings=bookings
+    )
+
+
+# ============================================================
+# CANCEL BOOKING
+# ============================================================
+
+@app.route(
+    "/cancel-booking/<reference>",
+    methods=["POST", "GET"]
+)
+@login_required
+def cancel_booking(reference):
+
+    booking = Booking.query.filter_by(
+        reference=reference
+    ).first_or_404()
+
+    if booking.user_id != session[
+        "user_id"
+    ]:
+
+        flash(
+            "You cannot cancel this booking.",
+            "danger"
+        )
+
+        return redirect(
+            url_for(
+                "my_bookings"
+            )
+        )
+
+    if booking.status == "cancelled":
+
+        flash(
+            "This booking is already cancelled.",
+            "warning"
+        )
+
+        return redirect(
+            url_for(
+                "my_bookings"
+            )
+        )
+
+    booking.status = "cancelled"
+
+    db.session.commit()
+
+    flash(
+        "Booking cancelled successfully.",
+        "success"
+    )
+
+    return redirect(
+        url_for(
+            "my_bookings"
+        )
+    )
+
+
+# ============================================================
+# COMPLAINT
+# ============================================================
+
+@app.route(
+    "/complaint",
+    methods=["GET", "POST"]
+)
+@login_required
+def complaint():
+
+    user = get_current_user()
+
+    if request.method == "POST":
+
+        subject = (
+            request.form.get(
+                "subject"
+            )
+            or ""
+        ).strip()
+
+        message = (
+            request.form.get(
+                "message"
+            )
+            or ""
+        ).strip()
+
+        bus_number = (
+            request.form.get(
+                "bus_number"
+            )
+            or ""
+        ).strip()
+
+        route_name = (
+            request.form.get(
+                "route_name"
+            )
+            or ""
+        ).strip()
+
+        if not subject or not message:
+
+            flash(
+                "Please enter subject and complaint.",
+                "danger"
+            )
+
+            return render_template(
+                "complaint.html"
+            )
+
+        new_complaint = Complaint(
+
+            reference=generate_complaint_reference(),
+
+            user_id=user.id,
+
+            name=user.full_name,
+
+            contact=user.mobile,
+
+            bus_number=bus_number,
+
+            route_name=route_name,
+
+            description=message,
+
+            subject=subject,
+
+            message=message,
+
+            status="submitted"
+        )
+
+        db.session.add(
+            new_complaint
+        )
+
+        db.session.commit()
+
+        flash(
+            "Complaint submitted successfully.",
+            "success"
+        )
+
+        return redirect(
+            url_for("complaint")
+        )
+
+    complaints = (
+        Complaint.query
+        .filter_by(
+            user_id=user.id
+        )
+        .order_by(
+            Complaint.created_at.desc()
+        )
+        .all()
+    )
+
+    return render_template(
+        "complaint.html",
+        complaints=complaints
+    )
+
+
+# ============================================================
+# HELPLINE
+# ============================================================
+
+@app.route("/helpline")
+def helpline():
+
+    return render_template(
+        "help.html"
+    )
+
+
+# ============================================================
+# PROFILE
+# ============================================================
+
+@app.route(
+    "/profile"
+)
+@login_required
+def profile():
+
+    user = get_current_user()
+
+    bookings = (
+        Booking.query
+        .filter_by(
+            user_id=user.id
+        )
+        .order_by(
+            Booking.created_at.desc()
+        )
+        .limit(5)
+        .all()
+    )
+
+    return render_template(
+        "profile.html",
+        user=user,
+        bookings=bookings
+    )
+
+
+# ============================================================
+# ADMIN DASHBOARD
+# ============================================================
+
+@app.route("/admin")
+@app.route("/admin/dashboard")
+@admin_required
+def admin_dashboard():
+
+    users_count = User.query.count()
+
+    stops_count = BusStop.query.count()
+
+    routes_count = BusRoute.query.count()
+
+    buses_count = Bus.query.count()
+
+    bookings_count = Booking.query.count()
+
+    complaints_count = Complaint.query.count()
+
+    return render_template(
+        "admin_dashboard.html",
+        users_count=users_count,
+        stops_count=stops_count,
+        routes_count=routes_count,
+        buses_count=buses_count,
+        bookings_count=bookings_count,
+        complaints_count=complaints_count
+    )
+
+
+# ============================================================
+# ADMIN USERS
+# ============================================================
+
+@app.route("/admin/users")
+@admin_required
+def admin_users():
+
+    users = (
+        User.query
+        .order_by(
+            User.id.desc()
+        )
+        .all()
+    )
+
+    return render_template(
+        "admin_users.html",
+        users=users
+    )
+
+
+# ============================================================
+# ADMIN STOPS
+# ============================================================
+
+@app.route(
+    "/admin/stops",
+    methods=["GET", "POST"]
+)
+@admin_required
+def admin_stops():
+
+    if request.method == "POST":
+
+        name = (
+            request.form.get(
+                "name"
+            )
+            or ""
+        ).strip()
+
+        area = (
+            request.form.get(
+                "area"
+            )
+            or ""
+        ).strip()
+
+        latitude = request.form.get(
+            "latitude",
+            type=float
+        )
+
+        longitude = request.form.get(
+            "longitude",
+            type=float
+        )
+
+        if not name:
+
+            flash(
+                "Stop name is required.",
+                "danger"
+            )
+
+            return redirect(
+                url_for(
+                    "admin_stops"
+                )
+            )
+
+        stop = BusStop(
+            name=name,
+            area=area,
+            latitude=latitude,
+            longitude=longitude
+        )
+
+        db.session.add(stop)
+
+        db.session.commit()
+
+        flash(
+            "Bus stop added.",
+            "success"
+        )
+
+        return redirect(
+            url_for(
+                "admin_stops"
+            )
+        )
+
+    stops = (
+        BusStop.query
+        .order_by(
+            BusStop.id
+        )
+        .all()
+    )
+
+    return render_template(
+        "admin_stops.html",
+        stops=stops
+    )
+
+
+# ============================================================
+# ADMIN ROUTES
+# ============================================================
+
+@app.route(
+    "/admin/routes",
+    methods=["GET", "POST"]
+)
+@admin_required
+def admin_routes():
+
+    if request.method == "POST":
+
+        name = (
+            request.form.get(
+                "name"
+            )
+            or ""
+        ).strip()
+
+        description = (
+            request.form.get(
+                "description"
+            )
+            or ""
+        ).strip()
+
+        if not name:
+
+            flash(
+                "Route name is required.",
+                "danger"
+            )
+
+            return redirect(
+                url_for(
+                    "admin_routes"
+                )
+            )
+
+        route = BusRoute(
+            name=name,
+            description=description
+        )
+
+        db.session.add(route)
+
+        db.session.commit()
+
+        flash(
+            "Route added successfully.",
+            "success"
+        )
+
+        return redirect(
+            url_for(
+                "admin_routes"
+            )
+        )
+
+    routes_list = (
+        BusRoute.query
+        .order_by(
+            BusRoute.id
+        )
+        .all()
+    )
+
+    return render_template(
+        "admin_routes.html",
+        routes=routes_list
+    )
+
+
+# ============================================================
+# ADMIN BUSES
+# ============================================================
+
+@app.route(
+    "/admin/buses",
+    methods=["GET", "POST"]
+)
+@admin_required
+def admin_buses():
+
+    if request.method == "POST":
+
+        bus_number = (
+            request.form.get(
+                "bus_number"
+            )
+            or ""
+        ).strip()
+
+        name = (
+            request.form.get(
+                "name"
+            )
+            or ""
+        ).strip()
+
+        route_id = request.form.get(
+            "route_id",
+            type=int
+        )
+
+        first_bus_time = (
+            request.form.get(
+                "first_bus_time"
+            )
+            or "06:00"
+        )
+
+        last_bus_time = (
+            request.form.get(
+                "last_bus_time"
+            )
+            or "22:00"
+        )
+
+        frequency_mins = (
+            request.form.get(
+                "frequency_mins",
+                type=int
+            )
+            or 30
+        )
+
+        fare = (
+            request.form.get(
+                "base_fare_per_segment",
+                type=float
+            )
+            or 10
+        )
+
+        if (
+            not bus_number
+            or not name
+            or not route_id
+        ):
+
+            flash(
+                "Please fill all required bus fields.",
+                "danger"
+            )
+
+            return redirect(
+                url_for(
+                    "admin_buses"
+                )
+            )
+
+        bus = Bus(
+            bus_number=bus_number,
+            name=name,
+            route_id=route_id,
+            first_bus_time=first_bus_time,
+            last_bus_time=last_bus_time,
+            frequency_mins=frequency_mins,
+            base_fare_per_segment=fare,
+            active=True
+        )
+
+        db.session.add(bus)
+
+        db.session.commit()
+
+        flash(
+            "Bus added successfully.",
+            "success"
+        )
+
+        return redirect(
+            url_for(
+                "admin_buses"
+            )
+        )
+
+    buses_list = (
+        Bus.query
+        .order_by(
+            Bus.id
+        )
+        .all()
+    )
+
+    routes_list = (
+        BusRoute.query
+        .order_by(
+            BusRoute.id
+        )
+        .all()
+    )
+
+    return render_template(
+        "admin_buses.html",
+        buses=buses_list,
+        routes=routes_list
+    )
+
+
+# ============================================================
+# ADMIN COMPLAINTS
+# ============================================================
+
+@app.route(
+    "/admin/complaints"
+)
+@admin_required
+def admin_complaints():
+
+    complaints = (
+        Complaint.query
+        .order_by(
+            Complaint.created_at.desc()
+        )
+        .all()
+    )
+
+    return render_template(
+        "admin_complaints.html",
+        complaints=complaints
+    )
+
+
+# ============================================================
+# UPDATE COMPLAINT
+# ============================================================
+
+@app.route(
+    "/admin/complaints/<int:complaint_id>",
+    methods=["POST"]
+)
+@admin_required
+def update_complaint(
+    complaint_id
+):
+
+    item = db.session.get(
+        Complaint,
+        complaint_id
+    )
+
+    if not item:
+
+        flash(
+            "Complaint not found.",
+            "danger"
+        )
+
+        return redirect(
+            url_for(
+                "admin_complaints"
+            )
+        )
+
+    item.status = (
+        request.form.get(
+            "status"
+        )
+        or item.status
+    )
+
+    item.admin_reply = (
+        request.form.get(
+            "admin_reply"
+        )
+        or item.admin_reply
+    )
+
+    item.updated_at = now_ist()
+
+    db.session.commit()
+
+    flash(
+        "Complaint updated.",
+        "success"
+    )
+
+    return redirect(
+        url_for(
+            "admin_complaints"
+        )
+    )
+
+
+# ============================================================
+# API: FIND ROUTE
+# ============================================================
+
+@app.route(
+    "/api/find-route"
+)
+def api_find_route():
+
+    source_id = request.args.get(
+        "source",
+        type=int
+    )
+
+    destination_id = request.args.get(
+        "destination",
+        type=int
+    )
+
+    if (
+        not source_id
+        or not destination_id
+    ):
+
+        return jsonify(
+            {
+                "success": False,
+                "message": (
+                    "Source and destination are required."
+                )
+            }
+        )
+
+    journey = find_dynamic_route(
+        source_id,
+        destination_id
+    )
+
+    if not journey:
+
+        return jsonify(
+            {
+                "success": False,
+                "message": "No route found."
+            }
+        )
+
+    details, total_fare = (
+        make_journey_details(
+            journey
+        )
+    )
+
+    response = []
+
+    for item in details:
+
+        response.append(
+            {
+                "bus_number": item[
+                    "bus"
+                ].bus_number,
+
+                "bus_name": item[
+                    "bus"
+                ].name,
+
+                "route": item[
+                    "route"
+                ].name,
+
+                "stops": [
+                    stop.name
+                    for stop in item[
+                        "stops"
+                    ]
+                ],
+
+                "fare": item[
+                    "fare"
+                ],
+
+                "first_bus": item[
+                    "bus"
+                ].first_bus_time,
+
+                "last_bus": item[
+                    "bus"
+                ].last_bus_time,
+
+                "frequency": item[
+                    "bus"
+                ].frequency_mins
+            }
+        )
+
+    return jsonify(
+        {
+            "success": True,
+            "journey": response,
+            "total_fare": total_fare
+        }
+    )
+
+
+# ============================================================
+# ERROR HANDLERS
+# ============================================================
+
+@app.errorhandler(404)
+def page_not_found(error):
+
+    return (
+        "<h1>Page Not Found</h1>",
+        404
+    )
+
+
+@app.errorhandler(500)
+def internal_error(error):
+
+    db.session.rollback()
+
+    return (
+        "<h1>Internal Server Error</h1>",
+        500
+    )
+
+
+# ============================================================
+# CREATE TABLES
+# ============================================================
+
+with app.app_context():
+
+    db.create_all()
+
+
+# ============================================================
+# RUN
+# ============================================================
+
+if __name__ == "__main__":
+
+    app.run(
+        host="127.0.0.1",
+        port=5000,
+        debug=True
+    )Flask>=3.0,<4.0
+Flask-SQLAlchemy>=3.1,<4.0
+Flask-WTF>=1.2,<2.0
+psycopg[binary]>=3.2,<4.0
+python-dotenv>=1.0,<2.0

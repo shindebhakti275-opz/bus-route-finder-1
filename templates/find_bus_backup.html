@@ -1,0 +1,754 @@
+﻿{% extends "base.html" %}
+
+{% block title %}
+Find a Bus Â· CityRide
+{% endblock %}
+
+{% block content %}
+
+<div class="page-heading">
+
+    <span class="eyebrow">
+        ROUTE FINDER
+    </span>
+
+    <h1>
+        Find a bus between stops
+    </h1>
+
+    <p>
+        Select your starting stop and destination to find
+        direct buses or routes with one transfer.
+    </p>
+
+</div>
+
+
+<form
+    class="search-card panel"
+    action="{{ url_for('find_bus') }}"
+    method="get"
+>
+
+    <label>
+
+        Starting Stop
+
+        <select
+            name="source"
+            required
+        >
+
+            <option value="">
+                Choose a starting stop
+            </option>
+
+            {% for stop in stops %}
+
+            <option
+                value="{{ stop.id }}"
+                {% if source_id == stop.id %}
+                    selected
+                {% endif %}
+            >
+                {{ stop.name }}
+            </option>
+
+            {% endfor %}
+
+        </select>
+
+    </label>
+
+
+    <span class="swap-icon">
+        â†’
+    </span>
+
+
+    <label>
+
+        Destination
+
+        <select
+            name="destination"
+            required
+        >
+
+            <option value="">
+                Choose your destination
+            </option>
+
+            {% for stop in stops %}
+
+            <option
+                value="{{ stop.id }}"
+                {% if destination_id == stop.id %}
+                    selected
+                {% endif %}
+            >
+                {{ stop.name }}
+            </option>
+
+            {% endfor %}
+
+        </select>
+
+    </label>
+
+
+    <button
+        class="button"
+        type="submit"
+    >
+        Search Bus
+    </button>
+
+</form>
+
+
+{% if source_id and destination_id %}
+
+<section class="section">
+
+    <div class="section-heading">
+
+        <div>
+
+            <span class="eyebrow">
+                BUS RESULTS
+            </span>
+
+            <h2>
+                {{ options|length }}
+                route option{% if options|length != 1 %}s{% endif %}
+                found
+            </h2>
+
+        </div>
+
+    </div>
+
+
+    {% for item in options %}
+
+
+    <!-- ================================================= -->
+    <!-- DIRECT BUS -->
+    <!-- ================================================= -->
+
+    {% if item.type == "direct" %}
+
+    <article class="route-result panel">
+
+        <div class="route-result-top">
+
+            <div>
+
+                <span class="bus-number">
+                    DIRECT ROUTE
+                </span>
+
+                {% if item.recommended %}
+
+                <span class="bus-number">
+                    RECOMMENDED
+                </span>
+
+                {% endif %}
+
+
+                <h3>
+                    {{ item.bus.name }}
+                </h3>
+
+
+                <p>
+                    <strong>
+                        Bus No:
+                    </strong>
+
+                    {{ item.bus.bus_number }}
+                </p>
+
+
+                <p>
+                    <strong>
+                        Route:
+                    </strong>
+
+                    {{ item.bus.route.name }}
+                </p>
+
+            </div>
+
+
+            <div class="fare-tag">
+
+                â‚¹{{ "%.2f"|format(item.match.fare) }}
+
+                <small>
+                    total fare
+                </small>
+
+            </div>
+
+        </div>
+
+
+        <!-- JOURNEY -->
+
+        <div class="route-details">
+
+            <h3>
+                Journey
+            </h3>
+
+
+            <p>
+
+                {% for stop in item.match.journey_stops %}
+
+                    <strong>
+                        {{ stop.name }}
+                    </strong>
+
+                    {% if not loop.last %}
+                        â†’
+                    {% endif %}
+
+                {% endfor %}
+
+            </p>
+
+        </div>
+
+
+        <!-- BUS INFORMATION -->
+
+        <div class="route-details">
+
+            <p>
+
+                <strong>
+                    Number of Segments:
+                </strong>
+
+                {{ item.match.segment_count }}
+
+            </p>
+
+
+            <p>
+
+                <strong>
+                    Number of Stops:
+                </strong>
+
+                {{ item.match.stop_count }}
+
+            </p>
+
+
+            <p>
+
+                <strong>
+                    First Bus:
+                </strong>
+
+                {{ item.bus.first_bus_time }}
+
+            </p>
+
+
+            <p>
+
+                <strong>
+                    Last Bus:
+                </strong>
+
+                {{ item.bus.last_bus_time }}
+
+            </p>
+
+
+            <p>
+
+                <strong>
+                    Frequency:
+                </strong>
+
+                Every
+                {{ item.bus.frequency_mins }}
+                minutes
+
+            </p>
+
+        </div>
+
+
+        <!-- ALL ROUTE STOPS -->
+
+        <div class="route-details">
+
+            <p>
+
+                <strong>
+                    Complete Route:
+                </strong>
+
+            </p>
+
+
+            <p>
+
+                {% for stop in item.match.all_stops %}
+
+                    {{ stop.name }}
+
+                    {% if not loop.last %}
+                        â†’
+                    {% endif %}
+
+                {% endfor %}
+
+            </p>
+
+        </div>
+
+
+        <!-- BOOK -->
+
+        <div class="route-actions">
+
+            <a
+                class="button button-small"
+                href="{{ url_for(
+                    'book',
+                    bus_id=item.bus.id,
+                    source=source_id,
+                    destination=destination_id
+                ) }}"
+            >
+                Book This Bus â†’
+            </a>
+
+        </div>
+
+    </article>
+
+
+    <!-- ================================================= -->
+    <!-- ONE TRANSFER ROUTE -->
+    <!-- ================================================= -->
+
+    {% elif item.type == "transfer" %}
+
+    <article class="route-result panel">
+
+        <div class="route-result-top">
+
+            <div>
+
+                <span class="bus-number">
+                    1 TRANSFER
+                </span>
+
+
+                {% if item.recommended %}
+
+                <span class="bus-number">
+                    RECOMMENDED
+                </span>
+
+                {% endif %}
+
+
+                <h3>
+                    {{ item.bus.name }}
+                    +
+                    {{ item.second_bus.name }}
+                </h3>
+
+
+                <p>
+
+                    Change bus at:
+
+                    <strong>
+                        {{ item.transfer_stop.name }}
+                    </strong>
+
+                </p>
+
+            </div>
+
+
+            <div class="fare-tag">
+
+                â‚¹{{ "%.2f"|format(item.total_fare) }}
+
+                <small>
+                    total fare
+                </small>
+
+            </div>
+
+        </div>
+
+
+        <!-- FIRST BUS -->
+
+        <div class="route-details">
+
+            <h3>
+                First Bus
+            </h3>
+
+
+            <p>
+
+                <strong>
+                    Bus Number:
+                </strong>
+
+                {{ item.bus.bus_number }}
+
+            </p>
+
+
+            <p>
+
+                <strong>
+                    Bus Name:
+                </strong>
+
+                {{ item.bus.name }}
+
+            </p>
+
+
+            <p>
+
+                <strong>
+                    Route:
+                </strong>
+
+                {{ item.bus.route.name }}
+
+            </p>
+
+
+            <p>
+
+                <strong>
+                    Journey:
+                </strong>
+
+                {% for stop in item.match.journey_stops %}
+
+                    {{ stop.name }}
+
+                    {% if not loop.last %}
+                        â†’
+                    {% endif %}
+
+                {% endfor %}
+
+            </p>
+
+
+            <p>
+
+                <strong>
+                    Fare:
+                </strong>
+
+                â‚¹{{ "%.2f"|format(item.match.fare) }}
+
+            </p>
+
+
+            <p>
+
+                <strong>
+                    First Bus:
+                </strong>
+
+                {{ item.bus.first_bus_time }}
+
+            </p>
+
+
+            <p>
+
+                <strong>
+                    Last Bus:
+                </strong>
+
+                {{ item.bus.last_bus_time }}
+
+            </p>
+
+
+            <p>
+
+                <strong>
+                    Frequency:
+                </strong>
+
+                Every
+                {{ item.bus.frequency_mins }}
+                minutes
+
+            </p>
+
+        </div>
+
+
+        <!-- TRANSFER -->
+
+        <div class="route-details">
+
+            <h3>
+                Transfer Stop
+            </h3>
+
+
+            <p>
+
+                Get down at:
+
+                <strong>
+                    {{ item.transfer_stop.name }}
+                </strong>
+
+            </p>
+
+
+            <p>
+                Change to the second bus here.
+            </p>
+
+        </div>
+
+
+        <!-- SECOND BUS -->
+
+        <div class="route-details">
+
+            <h3>
+                Second Bus
+            </h3>
+
+
+            <p>
+
+                <strong>
+                    Bus Number:
+                </strong>
+
+                {{ item.second_bus.bus_number }}
+
+            </p>
+
+
+            <p>
+
+                <strong>
+                    Bus Name:
+                </strong>
+
+                {{ item.second_bus.name }}
+
+            </p>
+
+
+            <p>
+
+                <strong>
+                    Route:
+                </strong>
+
+                {{ item.second_bus.route.name }}
+
+            </p>
+
+
+            <p>
+
+                <strong>
+                    Journey:
+                </strong>
+
+                {% for stop in item.second_match.journey_stops %}
+
+                    {{ stop.name }}
+
+                    {% if not loop.last %}
+                        â†’
+                    {% endif %}
+
+                {% endfor %}
+
+            </p>
+
+
+            <p>
+
+                <strong>
+                    Fare:
+                </strong>
+
+                â‚¹{{ "%.2f"|format(item.second_match.fare) }}
+
+            </p>
+
+
+            <p>
+
+                <strong>
+                    First Bus:
+                </strong>
+
+                {{ item.second_bus.first_bus_time }}
+
+            </p>
+
+
+            <p>
+
+                <strong>
+                    Last Bus:
+                </strong>
+
+                {{ item.second_bus.last_bus_time }}
+
+            </p>
+
+
+            <p>
+
+                <strong>
+                    Frequency:
+                </strong>
+
+                Every
+                {{ item.second_bus.frequency_mins }}
+                minutes
+
+            </p>
+
+        </div>
+
+
+        <!-- TOTAL -->
+
+        <div class="route-details">
+
+            <h3>
+                Complete Journey
+            </h3>
+
+
+            <p>
+
+                <strong>
+                    Total Segments:
+                </strong>
+
+                {{ item.total_segments }}
+
+            </p>
+
+
+            <p>
+
+                <strong>
+                    Total Stops:
+                </strong>
+
+                {{ item.total_stops }}
+
+            </p>
+
+
+            <p>
+
+                <strong>
+                    Total Fare:
+                </strong>
+
+                â‚¹{{ "%.2f"|format(item.total_fare) }}
+
+            </p>
+
+        </div>
+
+
+        <!-- BOOK FIRST LEG -->
+
+        <div class="route-actions">
+
+            <a
+                class="button button-small"
+                href="{{ url_for(
+                    'booking',
+                    bus_id=item.bus.id,
+                    source=source_id,
+                    destination=item.transfer_stop.id
+                ) }}"
+            >
+                Book First Bus â†’
+            </a>
+
+        </div>
+
+    </article>
+
+
+    {% endif %}
+
+
+    {% else %}
+
+
+    <!-- ================================================= -->
+    <!-- NO ROUTE -->
+    <!-- ================================================= -->
+
+    <div class="empty-state">
+
+        <h3>
+            No Bus Route Found
+        </h3>
+
+
+        <p>
+
+            No direct bus or one-transfer route was
+            found between the selected stops.
+
+            Please try another starting stop
+            and destination.
+
+        </p>
+
+
+        <a
+            class="button button-outline"
+            href="{{ url_for('schedule') }}"
+        >
+            View Bus Schedule
+        </a>
+
+    </div>
+
+
+    {% endfor %}
+
+</section>
+
+{% endif %}
+
+{% endblock %}

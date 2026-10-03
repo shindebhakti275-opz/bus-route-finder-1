@@ -1,0 +1,91 @@
+﻿{% extends "base.html" %}
+
+{% block title %}Bus stops &middot; CityRide{% endblock %}
+
+{% block content %}
+
+<div class="page-heading">
+    <span class="eyebrow">STOPS</span>
+
+    <h1>Explore bus stops</h1>
+
+    <p>
+        See sample stop areas and the routes that serve them.
+    </p>
+</div>
+
+<form class="inline-search" method="get">
+
+    <input
+        name="q"
+        value="{{ query }}"
+        placeholder="Search a stop or area"
+    >
+
+    <button class="button" type="submit">
+        Search
+    </button>
+
+</form>
+<div class="section" style="margin-top: 20px;">
+    <a class="button" href="{{ url_for('nearest_stop') }}">
+        &#128205; Find Nearest Bus Stop
+    </a>
+</div>
+
+<div class="card-grid">
+
+    {% for stop in stops %}
+
+    <article class="panel stop-card">
+
+        <div class="stop-icon">&#128205;</div>
+
+        <h3>
+            {{ stop.name }}
+        </h3>
+
+        <p>
+            {{ stop.area or "Area not listed" }}
+        </p>
+
+        <span class="eyebrow">
+            ROUTES
+        </span>
+
+        <p>
+
+            {% for route in stop_routes.get(stop.id, []) %}
+
+                <span class="tag">
+                    {{ route.name }}
+                </span>
+
+            {% else %}
+
+                <span class="muted">
+                    No route assigned
+                </span>
+
+            {% endfor %}
+
+        </p>
+
+    </article>
+
+    {% else %}
+
+    <div class="empty-state">
+        No stops match that search.
+    </div>
+
+    {% endfor %}
+
+</div>
+
+{% endblock %}
+
+
+
+
+

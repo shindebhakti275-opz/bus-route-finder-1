@@ -1,0 +1,6 @@
+﻿{% extends "base.html" %}
+{% block title %}My profile Â· CityRide{% endblock %}
+{% block content %}
+<div class="page-heading"><span class="eyebrow">ACCOUNT</span><h1>My profile</h1><p>Your account details and latest bookings.</p></div>
+<div class="two-column"><section class="panel"><h2>{{ user.full_name }}</h2><p>{{ user.email }}</p><p>{{ user.mobile }}</p><p class="muted">Member since {{ user.created_at|ist("%d %b %Y") }}</p></section><section class="panel"><div class="section-heading"><h2>Recent tickets</h2><a class="text-link" href="{{ url_for('my_tickets') }}">All tickets â†’</a></div>{% for item in bookings %}<p><a href="{{ url_for('ticket', reference=item.reference) }}">{{ item.reference }}</a> Â· {{ item.source.name }} â†’ {{ item.destination.name }} Â· â‚¹{{ "%.2f"|format(item.total_fare) }}</p>{% else %}<p class="muted">No bookings yet.</p>{% endfor %}</section></div>
+{% endblock %}

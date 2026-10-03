@@ -1,0 +1,332 @@
+﻿{% extends "base.html" %}
+
+{% block title %}
+CityRide Â· Bus Route Finder
+{% endblock %}
+
+{% block content %}
+
+<section class="hero">
+
+    <div class="hero-content">
+
+        <span class="eyebrow">
+            SMART BUS ROUTE FINDER
+        </span>
+
+        <h1>
+            Find the best bus route
+            for your journey.
+        </h1>
+
+        <p>
+            Search buses between any two stops,
+            check routes, timings, fares and book
+            your journey easily.
+        </p>
+
+        <div class="hero-actions">
+
+            <a
+                class="button primary"
+                href="{{ url_for('find_bus') }}"
+            >
+                Find a bus
+            </a>
+
+            <a
+                class="button secondary"
+                href="{{ url_for('bus_stops') }}"
+            >
+                View bus stops
+            </a>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+<section class="section">
+
+    <div class="section-heading">
+
+        <div>
+
+            <span class="eyebrow">
+                BUS ROUTES
+            </span>
+
+            <h2>
+                Explore routes
+            </h2>
+
+        </div>
+
+        <a
+            class="text-link"
+            href="{{ url_for('admin_routes') }}"
+        >
+            View all routes â†’
+        </a>
+
+    </div>
+
+
+    <div class="card-grid">
+
+        {% if routes %}
+
+            {% for route in routes %}
+
+            <article class="card">
+
+                <h3>
+                    {{ route.name }}
+                </h3>
+
+                {% if route.description %}
+
+                <p>
+                    {{ route.description }}
+                </p>
+
+                {% endif %}
+
+                <a
+                    class="text-link"
+                    href="{{ url_for('admin_routes') }}"
+                >
+                    View route â†’
+                </a>
+
+            </article>
+
+            {% endfor %}
+
+        {% else %}
+
+            <article class="card">
+
+                <h3>
+                    No routes available
+                </h3>
+
+                <p>
+                    Bus routes will appear here when
+                    they are added to the system.
+                </p>
+
+            </article>
+
+        {% endif %}
+
+    </div>
+
+</section>
+
+
+<section class="section">
+
+    <div class="section-heading">
+
+        <div>
+
+            <span class="eyebrow">
+                SAMPLE FLEET
+            </span>
+
+            <h2>
+                Popular buses
+            </h2>
+
+        </div>
+
+        <a
+            class="text-link"
+            href="{{ url_for('admin_buses') }}"
+        >
+            See all buses â†’
+        </a>
+
+    </div>
+
+
+    <div class="card-grid">
+
+        {% if buses %}
+
+            {% for bus in buses %}
+
+            <article class="card">
+
+                <h3>
+                    {{ bus.bus_number }}
+                </h3>
+
+                <p>
+                    {{ bus.name }}
+                </p>
+
+                {% if bus.route %}
+
+                <p>
+                    Route:
+                    {{ bus.route.name }}
+                </p>
+
+                {% endif %}
+
+                <p>
+                    First bus:
+                    {{ bus.first_bus_time }}
+                </p>
+
+                <p>
+                    Last bus:
+                    {{ bus.last_bus_time }}
+                </p>
+
+                <p>
+                    Frequency:
+                    {{ bus.frequency_mins }} minutes
+                </p>
+
+            </article>
+
+            {% endfor %}
+
+        {% else %}
+
+            <article class="card">
+
+                <h3>
+                    No buses available
+                </h3>
+
+                <p>
+                    Bus information will appear here
+                    when buses are added.
+                </p>
+
+            </article>
+
+        {% endif %}
+
+    </div>
+
+</section>
+
+
+<section class="section">
+
+    <div class="section-heading">
+
+        <div>
+
+            <span class="eyebrow">
+                QUICK ACCESS
+            </span>
+
+            <h2>
+                What would you like to do?
+            </h2>
+
+        </div>
+
+    </div>
+
+
+    <div class="card-grid">
+
+        <article class="card">
+
+            <h3>
+                Find a bus
+            </h3>
+
+            <p>
+                Enter your source and destination
+                to find a suitable bus route.
+            </p>
+
+            <a
+                class="text-link"
+                href="{{ url_for('find_bus') }}"
+            >
+                Search route â†’
+            </a>
+
+        </article>
+
+
+        <article class="card">
+
+            <h3>
+                Bus stops
+            </h3>
+
+            <p>
+                View all bus stops available
+                in the system.
+            </p>
+
+            <a
+                class="text-link"
+                href="{{ url_for('bus_stops') }}"
+            >
+                View stops â†’
+            </a>
+
+        </article>
+
+
+        <article class="card">
+
+            <h3>
+                Bus routes
+            </h3>
+
+            <p>
+                Explore the available routes
+                and their stops.
+            </p>
+
+            <a
+                class="text-link"
+                href="{{ url_for('admin_routes') }}"
+            >
+                View routes â†’
+            </a>
+
+        </article>
+
+
+        <article class="card">
+
+            <h3>
+                Help & helpline
+            </h3>
+
+            <p>
+                Get help and find the helpline
+                information.
+            </p>
+
+            <a
+                class="text-link"
+                href="{{ url_for('helpline') }}"
+            >
+                Get help â†’
+            </a>
+
+        </article>
+
+    </div>
+
+</section>
+
+{% endblock %}
+
+

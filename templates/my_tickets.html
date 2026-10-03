@@ -1,0 +1,6 @@
+﻿{% extends "base.html" %}
+{% block title %}My tickets Â· CityRide{% endblock %}
+{% block content %}
+<div class="page-heading"><span class="eyebrow">YOUR RIDES</span><h1>My tickets</h1><p>Bookings are stored with their creation time in India Standard Time.</p></div>
+<div class="table-wrap"><table><thead><tr><th>Reference</th><th>Journey</th><th>Travel time</th><th>Fare</th><th>Status</th><th></th></tr></thead><tbody>{% for item in bookings %}<tr><td><b>{{ item.reference }}</b></td><td>{{ item.source.name }} â†’ {{ item.destination.name }}<br><small>{{ item.bus.bus_number }} Â· {{ item.bus.name }}</small></td><td>{{ item.travel_at|ist }}</td><td>â‚¹{{ "%.2f"|format(item.total_fare) }}</td><td><span class="tag">{{ item.status }}</span></td><td><a class="text-link" href="{{ url_for('ticket', reference=item.reference) }}">View</a></td></tr>{% else %}<tr><td colspan="6" class="muted">No bookings yet. <a href="{{ url_for('find_bus') }}">Find a bus</a>.</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}
